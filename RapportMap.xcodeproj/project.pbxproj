@@ -6,11 +6,58 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		58A1B5DE2EB7D51600A5E5CF /* RapportMapIntents.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 58A1B5D52EB7D51600A5E5CF /* RapportMapIntents.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		58A1B5DC2EB7D51600A5E5CF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 58E726552EB74F8B00053725 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 58A1B5D42EB7D51600A5E5CF;
+			remoteInfo = RapportMapIntents;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		58A1B5E32EB7D51600A5E5CF /* Embed ExtensionKit Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				58A1B5DE2EB7D51600A5E5CF /* RapportMapIntents.appex in Embed ExtensionKit Extensions */,
+			);
+			name = "Embed ExtensionKit Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		58A1B5D52EB7D51600A5E5CF /* RapportMapIntents.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = RapportMapIntents.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		58E7265D2EB74F8B00053725 /* RapportMap.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RapportMap.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		58A1B5DF2EB7D51600A5E5CF /* Exceptions for "RapportMapIntents" folder in "RapportMapIntents" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 58A1B5D42EB7D51600A5E5CF /* RapportMapIntents */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		58A1B5D62EB7D51600A5E5CF /* RapportMapIntents */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				58A1B5DF2EB7D51600A5E5CF /* Exceptions for "RapportMapIntents" folder in "RapportMapIntents" target */,
+			);
+			path = RapportMapIntents;
+			sourceTree = "<group>";
+		};
 		58E7265F2EB74F8B00053725 /* RapportMap */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = RapportMap;
@@ -19,6 +66,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		58A1B5D22EB7D51600A5E5CF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		58E7265A2EB74F8B00053725 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -33,6 +87,7 @@
 			isa = PBXGroup;
 			children = (
 				58E7265F2EB74F8B00053725 /* RapportMap */,
+				58A1B5D62EB7D51600A5E5CF /* RapportMapIntents */,
 				58E7265E2EB74F8B00053725 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +96,7 @@
 			isa = PBXGroup;
 			children = (
 				58E7265D2EB74F8B00053725 /* RapportMap.app */,
+				58A1B5D52EB7D51600A5E5CF /* RapportMapIntents.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,6 +104,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		58A1B5D42EB7D51600A5E5CF /* RapportMapIntents */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 58A1B5E02EB7D51600A5E5CF /* Build configuration list for PBXNativeTarget "RapportMapIntents" */;
+			buildPhases = (
+				58A1B5D12EB7D51600A5E5CF /* Sources */,
+				58A1B5D22EB7D51600A5E5CF /* Frameworks */,
+				58A1B5D32EB7D51600A5E5CF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				58A1B5D62EB7D51600A5E5CF /* RapportMapIntents */,
+			);
+			name = RapportMapIntents;
+			packageProductDependencies = (
+			);
+			productName = RapportMapIntents;
+			productReference = 58A1B5D52EB7D51600A5E5CF /* RapportMapIntents.appex */;
+			productType = "com.apple.product-type.extensionkit-extension";
+		};
 		58E7265C2EB74F8B00053725 /* RapportMap */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 58E726682EB74F8C00053725 /* Build configuration list for PBXNativeTarget "RapportMap" */;
@@ -55,10 +133,12 @@
 				58E726592EB74F8B00053725 /* Sources */,
 				58E7265A2EB74F8B00053725 /* Frameworks */,
 				58E7265B2EB74F8B00053725 /* Resources */,
+				58A1B5E32EB7D51600A5E5CF /* Embed ExtensionKit Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				58A1B5DD2EB7D51600A5E5CF /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				58E7265F2EB74F8B00053725 /* RapportMap */,
@@ -80,6 +160,9 @@
 				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
+					58A1B5D42EB7D51600A5E5CF = {
+						CreatedOnToolsVersion = 26.0;
+					};
 					58E7265C2EB74F8B00053725 = {
 						CreatedOnToolsVersion = 26.0;
 					};
@@ -100,11 +183,19 @@
 			projectRoot = "";
 			targets = (
 				58E7265C2EB74F8B00053725 /* RapportMap */,
+				58A1B5D42EB7D51600A5E5CF /* RapportMapIntents */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		58A1B5D32EB7D51600A5E5CF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		58E7265B2EB74F8B00053725 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -115,6 +206,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		58A1B5D12EB7D51600A5E5CF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		58E726592EB74F8B00053725 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -124,7 +222,73 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		58A1B5DD2EB7D51600A5E5CF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 58A1B5D42EB7D51600A5E5CF /* RapportMapIntents */;
+			targetProxy = 58A1B5DC2EB7D51600A5E5CF /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		58A1B5E12EB7D51600A5E5CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QGAQ3AY3R3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RapportMapIntents/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RapportMapIntents;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ysoup.RapportMap.RapportMapIntents;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		58A1B5E22EB7D51600A5E5CF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QGAQ3AY3R3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RapportMapIntents/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RapportMapIntents;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ysoup.RapportMap.RapportMapIntents;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		58E726662EB74F8C00053725 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -262,6 +426,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -295,6 +460,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -315,6 +481,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		58A1B5E02EB7D51600A5E5CF /* Build configuration list for PBXNativeTarget "RapportMapIntents" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				58A1B5E12EB7D51600A5E5CF /* Debug */,
+				58A1B5E22EB7D51600A5E5CF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		58E726582EB74F8B00053725 /* Build configuration list for PBXProject "RapportMap" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
