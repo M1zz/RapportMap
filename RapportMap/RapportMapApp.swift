@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import AppIntents
 
 @main
 struct RapportMapApp: App {
@@ -14,7 +15,7 @@ struct RapportMapApp: App {
         WindowGroup {
             PeopleListView()
         }
-        .modelContainer(for: [Person.self])
+        .modelContainer(for: [Person.self, RapportEvent.self])
     }
 }
 
