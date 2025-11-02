@@ -14,6 +14,7 @@ struct RapportMapApp: App {
         WindowGroup {
             PeopleListView()
         }
-        .modelContainer(for: [Person.self, Interaction.self])
+        .modelContainer(for: [Person.self])
     }
 }
+
