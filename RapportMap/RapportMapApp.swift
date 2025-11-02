@@ -6,12 +6,14 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct RapportMapApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            PeopleListView()
         }
+        .modelContainer(for: [Person.self, Interaction.self])
     }
 }
