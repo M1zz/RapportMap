@@ -95,7 +95,7 @@ struct PeopleListView: View {
             return questionPool.randomElement()!
         }
 
-        let count = 10 // 생성 인원 수. 필요 시 조정하세요.
+        let count = 2 // 터치당 2명만 생성
 
         for _ in 0..<count {
             let name = namePool.randomElement()!
@@ -279,14 +279,28 @@ struct PersonHintRow: View {
 */
 
 struct PersonDetailView: View {
-    let person: Person
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    @State private var isEditing = false
+    @State private var showDeleteConfirm = false
+
+    @Bindable var person: Person
+
+    init(person: Person) {
+        self._person = Bindable(person)
+    }
     
     var body: some View {
         Form {
             Section(header: Text("기본 정보")) {
-                Text("이름: \(person.name)")
-                if !person.contact.isEmpty {
-                    Text("연락처: \(person.contact)")
+                if isEditing {
+                    TextField("이름", text: $person.name)
+                    TextField("연락처", text: $person.contact)
+                } else {
+                    Text("이름: \(person.name)")
+                    if !person.contact.isEmpty {
+                        Text("연락처: \(person.contact)")
+                    }
                 }
             }
             
@@ -294,41 +308,128 @@ struct PersonDetailView: View {
                 HStack {
                     Text("관계 상태:")
                     Spacer()
-                    Text(stateLabel)
-                        .foregroundColor(stateColor)
+                    if isEditing {
+                        Picker("관계 상태", selection: $person.state) {
+                            ForEach(RelationshipState.allCases, id: \.self) { state in
+                                Text(label(for: state)).tag(state)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    } else {
+                        Text(stateLabel)
+                            .foregroundColor(stateColor)
+                    }
                 }
             }
             
             Section(header: Text("최근 상호작용")) {
-                if let lastMentoring = person.lastMentoring {
-                    Text("마지막 멘토링: \(lastMentoring, formatter: dateFormatter)")
+                // Mentoring
+                DateEditorRow(title: "마지막 멘토링", date: $person.lastMentoring, isEditing: isEditing)
+                Button {
+                    person.lastMentoring = Date()
+                    try? context.save()
+                } label: {
+                    Label("멘토링 지금 기록하기", systemImage: "clock.badge.checkmark")
                 }
-                if let lastMeal = person.lastMeal {
-                    Text("마지막 식사: \(lastMeal, formatter: dateFormatter)")
+
+                // Meal
+                DateEditorRow(title: "마지막 식사", date: $person.lastMeal, isEditing: isEditing)
+                Button {
+                    person.lastMeal = Date()
+                    try? context.save()
+                } label: {
+                    Label("식사 지금 기록하기", systemImage: "clock.badge.checkmark")
                 }
-                if let lastContact = person.lastContact {
-                    Text("마지막 접촉: \(lastContact, formatter: dateFormatter)")
+
+                // Contact
+                DateEditorRow(title: "마지막 접촉", date: $person.lastContact, isEditing: isEditing)
+                Button {
+                    person.lastContact = Date()
+                    try? context.save()
+                } label: {
+                    Label("접촉 지금 기록하기", systemImage: "bubble.left")
                 }
-                if let lastQuestion = person.lastQuestion, !lastQuestion.isEmpty {
+
+                if isEditing {
+                    TextField("마지막 질문", text: Binding(
+                        get: { person.lastQuestion ?? "" },
+                        set: { person.lastQuestion = $0.isEmpty ? nil : $0 }
+                    ))
+                } else if let lastQuestion = person.lastQuestion, !lastQuestion.isEmpty {
                     Text("마지막 질문: \(lastQuestion)")
                 }
             }
             
-            if person.unansweredCount > 0 {
-                Section {
-                    Text("미해결 대화: \(person.unansweredCount)")
-                        .foregroundColor(.orange)
+            Section("대화/상태") {
+                if isEditing {
+                    Stepper(value: $person.unansweredCount, in: 0...100) {
+                        Text("미해결 대화: \(person.unansweredCount)")
+                    }
+                    Toggle("관계가 소홀함", isOn: $person.isNeglected)
+                } else {
+                    if person.unansweredCount > 0 {
+                        Text("미해결 대화: \(person.unansweredCount)")
+                            .foregroundColor(.orange)
+                    }
+                    if person.isNeglected {
+                        Text("이 사람과의 관계가 소홀해졌습니다. 다시 연결하세요.")
+                            .foregroundColor(.blue)
+                    }
                 }
             }
-            
-            if person.isNeglected {
+
+            if isEditing {
                 Section {
-                    Text("이 사람과의 관계가 소홀해졌습니다. 다시 연결하세요.")
-                        .foregroundColor(.blue)
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Text("이 사람 삭제")
+                    }
                 }
             }
         }
         .navigationTitle(person.name)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(isEditing ? "완료" : "편집") {
+                    isEditing.toggle()
+                    try? context.save()
+                }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button {
+                        person.lastMentoring = Date()
+                        try? context.save()
+                    } label: {
+                        Label("멘토링 지금 기록", systemImage: "person.badge.clock")
+                    }
+                    Button {
+                        person.lastMeal = Date()
+                        try? context.save()
+                    } label: {
+                        Label("식사 지금 기록", systemImage: "fork.knife.circle")
+                    }
+                    Button {
+                        person.lastContact = Date()
+                        try? context.save()
+                    } label: {
+                        Label("접촉 지금 기록", systemImage: "bubble.left")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("빠른 액션")
+            }
+        }
+        .confirmationDialog("정말 삭제할까요?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("삭제", role: .destructive) {
+                context.delete(person)
+                try? context.save()
+                dismiss()
+            }
+            Button("취소", role: .cancel) { }
+        }
     }
     
     private var stateColor: Color {
@@ -339,20 +440,54 @@ struct PersonDetailView: View {
         }
     }
     
-    private var stateLabel: String {
-        switch person.state {
+    private var stateLabel: String { label(for: person.state) }
+
+    private func label(for state: RelationshipState) -> String {
+        switch state {
         case .distant: return "멀어짐"
         case .warming: return "따뜻해지는 중"
         case .close: return "끈끈함"
         }
     }
-    
-    private var dateFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        return formatter
+}
+
+// MARK: - DateEditorRow
+private struct DateEditorRow: View {
+    let title: String
+    @Binding var date: Date?
+    let isEditing: Bool
+
+    var body: some View {
+        if isEditing {
+            Toggle(isOn: Binding(
+                get: { date != nil },
+                set: { newValue in
+                    if newValue {
+                        if date == nil { date = Date() }
+                    } else {
+                        date = nil
+                    }
+                }
+            )) {
+                Text(title)
+            }
+            if date != nil {
+                DatePicker("", selection: Binding(get: { date ?? Date() }, set: { date = $0 }), displayedComponents: [.date])
+                    .datePickerStyle(.compact)
+            }
+        } else {
+            if let d = date {
+                Text("\(title): \(d, formatter: dateFormatter)")
+            }
+        }
     }
+}
+
+private var dateFormatter: DateFormatter {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .none
+    return formatter
 }
 
 struct EmptyPeopleView: View {
