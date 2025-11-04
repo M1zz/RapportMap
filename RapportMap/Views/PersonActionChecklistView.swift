@@ -7,6 +7,66 @@
 
 import SwiftUI
 import SwiftData
+import UserNotifications
+
+// MARK: - NotificationManager
+class NotificationManager {
+    static let shared = NotificationManager()
+    
+    private init() {}
+    
+    func requestPermission() async -> Bool {
+        do {
+            let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+            return granted
+        } catch {
+            print("알림 권한 요청 실패: \(error)")
+            return false
+        }
+    }
+    
+    func scheduleActionReminder(
+        for personAction: PersonAction,
+        at date: Date,
+        title: String,
+        body: String
+    ) async -> Bool {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.badge = 1
+        
+        // 메타데이터 추가
+        if let personId = personAction.person?.persistentModelID.hashValue,
+           let actionId = personAction.action?.persistentModelID.hashValue {
+            content.userInfo = [
+                "personId": personId,
+                "actionId": actionId,
+                "type": "actionReminder"
+            ]
+        }
+        
+        let calendar = Calendar.current
+        let dateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
+        
+        let identifier = "reminder_\(UUID().uuidString)"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        do {
+            try await UNUserNotificationCenter.current().add(request)
+            return true
+        } catch {
+            print("알림 스케줄링 실패: \(error)")
+            return false
+        }
+    }
+    
+    func cancelAllActionReminders() {
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+    }
+}
 
 // MARK: - Keyboard Dismiss Helper
 extension View {
@@ -290,6 +350,7 @@ struct PersonActionRow: View {
     @Bindable var personAction: PersonAction
     @Environment(\.modelContext) private var context
     @State private var showingResultInput = false
+    @State private var showingReminderSetting = false
     @FocusState private var isResultFocused: Bool
     
     var body: some View {
@@ -297,34 +358,75 @@ struct PersonActionRow: View {
             HStack(alignment: .top, spacing: 12) {
                 // 체크박스
                 Button {
-                    if personAction.isCompleted {
-                        // 완료 취소
-                        personAction.markIncomplete()
-                        try? context.save()
-                    } else {
-                        // 완료 처리하면서 결과 입력 화면 띄우기
-                        showingResultInput = true
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        if personAction.isCompleted {
+                            // 완료 취소 허용 (모든 액션 타입)
+                            personAction.markIncomplete()
+                            try? context.save()
+                        } else {
+                            // 완료 처리하면서 결과 입력 화면 띄우기
+                            showingResultInput = true
+                        }
                     }
                 } label: {
                     Image(systemName: personAction.isCompleted ? "checkmark.circle.fill" : "circle")
                         .font(.title3)
-                        .foregroundStyle(personAction.isCompleted ? .green : .gray)
+                        .foregroundStyle(
+                            personAction.isCompleted 
+                                ? (personAction.action?.type == .critical ? .orange : .green)
+                                : .gray
+                        )
                 }
                 .buttonStyle(.plain)
                 
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         if let action = personAction.action {
-                            Text(action.title)
-                                .font(.headline)
-                                .foregroundStyle(personAction.isCompleted ? .secondary : .primary)
-                                .strikethrough(personAction.isCompleted)
+                            HStack(spacing: 6) {
+                                // Critical 액션 완료 시 특별 표시
+                                if action.type == .critical && personAction.isCompleted {
+                                    Image(systemName: "exclamationmark.shield.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.green) // 초록색으로 변경 (완료됨을 나타냄)
+                                }
+                                
+                                Text(action.title)
+                                    .font(.headline)
+                                    .foregroundStyle(
+                                        personAction.isCompleted 
+                                            ? (action.type == .critical ? .secondary : .secondary) // Critical도 완료 시 회색
+                                            : .primary
+                                    )
+                                    .strikethrough(
+                                        personAction.isCompleted, // 모든 액션에 취소선 적용
+                                        color: action.type == .critical ? .orange : .red // Critical은 오렌지, 일반은 빨간 취소선
+                                    )
+                                    .animation(.easeInOut(duration: 0.3), value: personAction.isCompleted)
+                            }
                             
                             Spacer()
                             
-                            if action.type == .critical {
-                                Text("⚠️")
-                                    .font(.caption)
+                            HStack(spacing: 8) {
+                                // 리마인더 버튼
+                                Button {
+                                    showingReminderSetting = true
+                                } label: {
+                                    Image(systemName: "bell")
+                                        .font(.caption)
+                                        .foregroundStyle(.blue)
+                                }
+                                .buttonStyle(.plain)
+                                
+                                if action.type == .critical {
+                                    HStack(spacing: 2) {
+                                        Text("⚠️")
+                                            .font(.caption)
+                                        Text("중요")
+                                            .font(.caption2)
+                                            .foregroundStyle(.orange)
+                                            .fontWeight(.medium)
+                                    }
+                                }
                             }
                         }
                     }
@@ -334,6 +436,24 @@ struct PersonActionRow: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
+                    }
+                    
+                    // Critical 액션 완료 시 특별 안내
+                    if let action = personAction.action, action.type == .critical && personAction.isCompleted {
+                        HStack(spacing: 6) {
+                            Image(systemName: "info.circle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                            Text("중요한 액션이 완료되었습니다. 체크박스를 다시 누르면 완료를 취소할 수 있어요.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.green.opacity(0.1))
+                        )
                     }
                     
                     // 결과값 표시 (중요!)
@@ -349,7 +469,7 @@ struct PersonActionRow: View {
                         .padding(.vertical, 6)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.blue.gradient)
+                                .fill(Color.blue.gradient) // 모든 액션 결과값을 파란색으로 통일
                         )
                     }
                     
@@ -365,6 +485,9 @@ struct PersonActionRow: View {
         .contentShape(Rectangle())
         .sheet(isPresented: $showingResultInput) {
             ActionResultInputSheet(personAction: personAction)
+        }
+        .sheet(isPresented: $showingReminderSetting) {
+            ReminderSettingSheet(personAction: personAction)
         }
     }
 }
@@ -486,6 +609,132 @@ struct ActionResultInputSheet: View {
         personAction.markCompleted()
         try? context.save()
         dismiss()
+    }
+}
+
+// MARK: - ReminderSettingSheet (새로 추가!)
+struct ReminderSettingSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var personAction: PersonAction
+    
+    @State private var selectedDate = Date()
+    @State private var reminderTitle = ""
+    @State private var reminderBody = ""
+    @State private var isSettingReminder = false
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("리마인더 시간") {
+                    DatePicker("알림 시간", selection: $selectedDate, displayedComponents: [.date, .hourAndMinute])
+                        .datePickerStyle(.compact)
+                }
+                
+                Section("알림 내용") {
+                    TextField("제목", text: $reminderTitle)
+                        .autocorrectionDisabled()
+                    
+                    TextField("내용 (선택)", text: $reminderBody, axis: .vertical)
+                        .lineLimit(2...4)
+                }
+                
+                Section("미리보기") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(reminderTitle.isEmpty ? (personAction.action?.title ?? "액션 리마인더") : reminderTitle)
+                            .font(.headline)
+                        
+                        let bodyText = reminderBody.isEmpty ? "\(personAction.person?.preferredName ?? personAction.person?.name ?? "")님과 관련된 액션을 확인해보세요" : reminderBody
+                        Text(bodyText)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        
+                        Text(selectedDate.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption)
+                            .foregroundStyle(.blue)
+                    }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                }
+                
+                Section {
+                    Button {
+                        Task {
+                            await setupReminder()
+                        }
+                    } label: {
+                        HStack {
+                            if isSettingReminder {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                    .padding(.trailing, 4)
+                            }
+                            Text("리마인더 설정")
+                        }
+                    }
+                    .disabled(selectedDate <= Date() || isSettingReminder)
+                } footer: {
+                    if selectedDate <= Date() {
+                        Text("미래 시간을 선택해주세요")
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("리마인더 설정")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { 
+                        dismiss() 
+                    }
+                    .disabled(isSettingReminder)
+                }
+            }
+            .onAppear {
+                setupInitialValues()
+            }
+        }
+    }
+    
+    private func setupInitialValues() {
+        if let action = personAction.action {
+            reminderTitle = "\(action.title) 리마인더"
+            reminderBody = "\(personAction.person?.preferredName ?? personAction.person?.name ?? "")님과 관련된 액션을 확인해보세요"
+        }
+        selectedDate = Date().addingTimeInterval(3600) // 1시간 후로 기본 설정
+    }
+    
+    private func setupReminder() async {
+        isSettingReminder = true
+        
+        // 권한 요청
+        let hasPermission = await NotificationManager.shared.requestPermission()
+        
+        guard hasPermission else {
+            isSettingReminder = false
+            // TODO: 설정 앱으로 이동하도록 안내하는 얼럿 표시
+            return
+        }
+        
+        let title = reminderTitle.isEmpty ? (personAction.action?.title ?? "액션 리마인더") : reminderTitle
+        let body = reminderBody.isEmpty ? "\(personAction.person?.preferredName ?? personAction.person?.name ?? "")님과 관련된 액션을 확인해보세요" : reminderBody
+        
+        let success = await NotificationManager.shared.scheduleActionReminder(
+            for: personAction,
+            at: selectedDate,
+            title: title,
+            body: body
+        )
+        
+        isSettingReminder = false
+        
+        if success {
+            // 성공 피드백
+            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+            impactFeedback.impactOccurred()
+            dismiss()
+        }
+        // TODO: 실패 시 에러 얼럿 표시
     }
 }
 
