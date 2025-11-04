@@ -8,6 +8,16 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - Keyboard Dismiss Helper
+extension View {
+    /// Dismiss keyboard by ending editing across the app window
+    func endEditing() {
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
+    }
+}
+
 struct PersonActionChecklistView: View {
     @Environment(\.modelContext) private var context
     let person: Person
@@ -71,6 +81,10 @@ struct PersonActionChecklistView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                endEditing()
             }
         }
         .navigationTitle("\(person.preferredName.isEmpty ? person.name : person.preferredName)의 액션")
@@ -139,36 +153,45 @@ struct AddCustomActionSheet: View {
     
     var body: some View {
         NavigationStack {
-            Form {
-                Section("액션 정보") {
-                    TextField("제목", text: $title)
-                        .autocorrectionDisabled()
-                    TextField("설명 (선택)", text: $description, axis: .vertical)
-                        .lineLimit(2...4)
-                    TextField("입력 예시 (선택)", text: $placeholder)
-                        .autocorrectionDisabled()
-                }
-                
-                Section("설정") {
-                    Picker("Phase", selection: .constant(phase)) {
-                        Text("\(phase.emoji) \(phase.rawValue)")
+            ZStack {
+                // Transparent tap area to dismiss keyboard
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        endEditing()
                     }
-                    .disabled(true)
+
+                Form {
+                    Section("액션 정보") {
+                        TextField("제목", text: $title)
+                            .autocorrectionDisabled()
+                        TextField("설명 (선택)", text: $description, axis: .vertical)
+                            .lineLimit(2...4)
+                        TextField("입력 예시 (선택)", text: $placeholder)
+                            .autocorrectionDisabled()
+                    }
                     
-                    Picker("타입", selection: $type) {
-                        ForEach(ActionType.allCases, id: \.self) { type in
-                            HStack {
-                                Text(type.emoji)
-                                Text(type.rawValue)
-                            }
-                            .tag(type)
+                    Section("설정") {
+                        Picker("Phase", selection: .constant(phase)) {
+                            Text("\(phase.emoji) \(phase.rawValue)")
                         }
+                        .disabled(true)
+                        
+                        Picker("타입", selection: $type) {
+                            ForEach(ActionType.allCases, id: \.self) { type in
+                                HStack {
+                                    Text(type.emoji)
+                                    Text(type.rawValue)
+                                }
+                                .tag(type)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        
+                        Text(type.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    .pickerStyle(.segmented)
-                    
-                    Text(type.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("커스텀 액션 추가")
@@ -357,94 +380,103 @@ struct ActionResultInputSheet: View {
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                // 액션 제목
-                if let action = personAction.action {
-                    VStack(spacing: 8) {
-                        Text(action.title)
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .multilineTextAlignment(.center)
-                        
-                        if !action.actionDescription.isEmpty {
-                            Text(action.actionDescription)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+            ZStack {
+                // Transparent tap area to dismiss keyboard
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isInputFocused = false
+                        endEditing()
+                    }
+                
+                VStack(spacing: 20) {
+                    // 액션 제목
+                    if let action = personAction.action {
+                        VStack(spacing: 8) {
+                            Text(action.title)
+                                .font(.title2)
+                                .fontWeight(.bold)
                                 .multilineTextAlignment(.center)
+                            
+                            if !action.actionDescription.isEmpty {
+                                Text(action.actionDescription)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
                         }
-                    }
-                    .padding(.top, 30)
-                }
-                
-                Spacer()
-                
-                // 결과 입력 섹션
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("무엇을 알아냈나요?", systemImage: "lightbulb.fill")
-                        .font(.headline)
-                        .foregroundStyle(.blue)
-                    
-                    TextField(personAction.action?.placeholder ?? "예: 입력하세요", text: $resultText, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(3...6)
-                        .focused($isInputFocused)
-                        .padding(.horizontal, 4)
-                    
-                    Text("이 정보는 나중에 이 사람을 만나기 전에 다시 확인할 수 있어요")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(20)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.systemGray6))
-                )
-                
-                Spacer()
-                
-                // 버튼들
-                VStack(spacing: 12) {
-                    // 완료 버튼
-                    Button {
-                        completeAction()
-                    } label: {
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                            Text("완료")
-                        }
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.green.gradient)
-                        .cornerRadius(12)
+                        .padding(.top, 30)
                     }
                     
-                    // 건너뛰기 버튼
-                    Button {
-                        dismiss()
-                    } label: {
-                        Text("나중에 입력하기")
-                            .font(.subheadline)
+                    Spacer()
+                    
+                    // 결과 입력 섹션
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("무엇을 알아냈나요?", systemImage: "lightbulb.fill")
+                            .font(.headline)
+                            .foregroundStyle(.blue)
+                        
+                        TextField(personAction.action?.placeholder ?? "예: 입력하세요", text: $resultText, axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(3...6)
+                            .focused($isInputFocused)
+                            .padding(.horizontal, 4)
+                        
+                        Text("이 정보는 나중에 이 사람을 만나기 전에 다시 확인할 수 있어요")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                }
-            }
-            .padding()
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("취소") {
-                        dismiss()
+                    .padding(20)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color(.systemGray6))
+                    )
+                    
+                    Spacer()
+                    
+                    // 버튼들
+                    VStack(spacing: 12) {
+                        // 완료 버튼
+                        Button {
+                            completeAction()
+                        } label: {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                Text("완료")
+                            }
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green.gradient)
+                            .cornerRadius(12)
+                        }
+                        
+                        // 건너뛰기 버튼
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text("나중에 입력하기")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
-            .onAppear {
-                resultText = personAction.context
-                // 키보드 자동으로 올리기
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    isInputFocused = true
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("취소") {
+                    dismiss()
                 }
+            }
+        }
+        .onAppear {
+            resultText = personAction.context
+            // 키보드 자동으로 올리기
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                isInputFocused = true
             }
         }
     }
