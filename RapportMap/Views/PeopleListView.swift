@@ -671,7 +671,8 @@ struct PersonDetailView: View {
     private func getCriticalActions() -> [PersonAction] {
         person.actions
             .filter { 
-                $0.action?.type == .critical // 완료/미완료 상관없이 모든 Critical 액션
+                // 사용자 정의 Critical 액션만 표시 (기본 액션 제외)
+                $0.action?.type == .critical && $0.action?.isDefault == false
             }
             .sorted { 
                 // 미완료를 먼저, 완료된 것들은 아래로 (취소선으로 표시됨)

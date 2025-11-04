@@ -164,8 +164,11 @@ struct VoiceRecorderView: View {
             }
             .confirmationDialog("녹음 완료", isPresented: $showingSaveConfirm) {
                 Button("저장하기") {
-                    saveMeeting()
+                    if !recorder.isTranscribing {
+                        saveMeeting()
+                    }
                 }
+                .disabled(recorder.isTranscribing)
                 Button("다시 녹음") {
                     recorder.reset()
                 }
@@ -195,21 +198,42 @@ struct VoiceRecorderView: View {
     }
     
     private func saveMeeting() {
-        guard let audioURL = recorder.audioFileURL else { return }
+        guard let audioURL = recorder.audioFileURL else { 
+            print("Audio URL is nil")
+            return 
+        }
+        
+        // 이미 저장 중이라면 중복 실행 방지
+        if recorder.isTranscribing {
+            print("Already processing transcription")
+            return
+        }
         
         // 최종 전사가 있으면 사용, 없으면 비동기로 처리
         if !recorder.finalTranscription.isEmpty {
             createMeetingRecord(with: recorder.finalTranscription, audioURL: audioURL)
         } else {
-            // 비동기 전사 실행 - 필요한 값들을 직접 캡처
+            // 비동기 전사 실행 - 중복 방지를 위해 상태 변경
+            recorder.isTranscribing = true
+            
+            // 필요한 값들을 직접 캡처
             let context = self.context
             let person = self.person
             let meetingType = self.selectedMeetingType
             let duration = recorder.recordingDuration
             let dismiss = self.dismiss
             
-            recorder.transcribeAudio { transcribedText in
+            recorder.transcribeAudio { [weak recorder] transcribedText in
                 DispatchQueue.main.async {
+                    // 중복 실행 방지 체크
+                    guard recorder?.isTranscribing == true else { 
+                        print("Transcription already completed or cancelled")
+                        return 
+                    }
+                    
+                    // 상태 리셋
+                    recorder?.isTranscribing = false
+                    
                     let meeting = MeetingRecord(
                         date: Date(),
                         meetingType: meetingType,
@@ -220,9 +244,14 @@ struct VoiceRecorderView: View {
                     meeting.person = person
                     
                     context.insert(meeting)
-                    try? context.save()
                     
-                    dismiss()
+                    do {
+                        try context.save()
+                        print("Successfully saved meeting record")
+                        dismiss()
+                    } catch {
+                        print("Error saving meeting record: \(error)")
+                    }
                 }
             }
         }
@@ -239,9 +268,14 @@ struct VoiceRecorderView: View {
         meeting.person = person
         
         context.insert(meeting)
-        try? context.save()
         
-        dismiss()
+        do {
+            try context.save()
+            print("Successfully saved meeting record with transcription")
+            dismiss()
+        } catch {
+            print("Error saving meeting record with transcription: \(error)")
+        }
     }
 }
 
@@ -362,46 +396,83 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
     
     private func performFinalTranscription() {
-        guard let audioURL = audioFileURL else { return }
+        guard let audioURL = audioFileURL else { 
+            print("No audio URL for final transcription")
+            return 
+        }
+        
+        // 이미 전사 중인 경우 중복 실행 방지
+        if isTranscribing {
+            print("Final transcription already in progress")
+            return
+        }
         
         isTranscribing = true
         let recognitionRequest = SFSpeechURLRecognitionRequest(url: audioURL)
         
         speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             DispatchQueue.main.async {
-                self?.isTranscribing = false
+                guard let self = self else { return }
+                
+                self.isTranscribing = false
+                
                 if let result = result, result.isFinal {
-                    self?.finalTranscription = result.bestTranscription.formattedString
+                    self.finalTranscription = result.bestTranscription.formattedString
+                    print("Final transcription completed: \(self.finalTranscription.prefix(50))...")
                 } else if let error = error {
                     print("전사 오류: \(error)")
-                    self?.finalTranscription = ""
+                    self.finalTranscription = ""
+                } else {
+                    print("No transcription result")
+                    self.finalTranscription = ""
                 }
             }
         }
     }
     
     func transcribeAudio(completion: @escaping (String) -> Void) {
+        // 이미 전사가 완료된 경우
         if !finalTranscription.isEmpty {
             completion(finalTranscription)
             return
         }
         
+        // 이미 전사 중인 경우 중복 실행 방지
+        if isTranscribing {
+            print("Transcription already in progress")
+            return
+        }
+        
         guard let audioURL = audioFileURL else {
+            print("Audio URL is nil for transcription")
             completion("")
             return
         }
         
+        isTranscribing = true
         let recognitionRequest = SFSpeechURLRecognitionRequest(url: audioURL)
         
-        speechRecognizer?.recognitionTask(with: recognitionRequest) { result, error in
-            if let result = result {
-                let transcription = result.bestTranscription.formattedString
-                DispatchQueue.main.async {
-                    completion(transcription)
+        speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                // 이미 처리된 경우 중복 실행 방지
+                if !self.isTranscribing {
+                    print("Transcription was already completed")
+                    return
                 }
-            } else {
-                DispatchQueue.main.async {
-                    completion("변환 실패")
+                
+                self.isTranscribing = false
+                
+                if let result = result {
+                    let transcription = result.bestTranscription.formattedString
+                    self.finalTranscription = transcription
+                    completion(transcription)
+                } else if let error = error {
+                    print("전사 오류: \(error)")
+                    completion("음성 변환에 실패했습니다.")
+                } else {
+                    completion("")
                 }
             }
         }
