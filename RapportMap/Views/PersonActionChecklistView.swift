@@ -793,6 +793,11 @@ struct PersonActionRow: View {
                             // 완료 처리하면서 결과 입력 화면 띄우기
                             showingResultInput = true
                         }
+                        
+                        // 관계 상태 업데이트
+                        if let person = personAction.person {
+                            RelationshipStateManager.shared.updatePersonRelationshipState(person, context: context)
+                        }
                     }
                 } label: {
                     Image(systemName: personAction.isCompleted ? "checkmark.circle.fill" : "circle")
@@ -1084,6 +1089,12 @@ struct ActionResultInputSheet: View {
     private func completeAction() {
         personAction.context = resultText
         personAction.markCompleted()
+        
+        // 관계 상태 업데이트
+        if let person = personAction.person {
+            RelationshipStateManager.shared.updatePersonRelationshipState(person, context: context)
+        }
+        
         try? context.save()
         dismiss()
     }
