@@ -90,11 +90,37 @@ struct PersonActionChecklistView: View {
         _selectedPhase = State(initialValue: person.currentPhase)
     }
     
-    // 이 사람의 액션들을 Phase별로 필터링
+    // 이 사람의 액션들을 Phase별로 필터링하고 타입별로 그룹화
     private var actionsForPhase: [PersonAction] {
         person.actions
             .filter { $0.action?.phase == selectedPhase }
-            .sorted { ($0.action?.order ?? 0) < ($1.action?.order ?? 0) }
+            .sorted { action1, action2 in
+                // 1순위: Critical 액션을 우선으로
+                if action1.action?.type != action2.action?.type {
+                    return (action1.action?.type == .critical) && (action2.action?.type != .critical)
+                }
+                // 2순위: 완료되지 않은 액션을 우선으로
+                if action1.isCompleted != action2.isCompleted {
+                    return !action1.isCompleted && action2.isCompleted
+                }
+                // 3순위: order 순서대로
+                return (action1.action?.order ?? 0) < (action2.action?.order ?? 0)
+            }
+    }
+    
+    // Critical 액션들만 필터링
+    private var criticalActionsForPhase: [PersonAction] {
+        actionsForPhase.filter { $0.action?.type == .critical }
+    }
+    
+    // Tracking 액션들만 필터링  
+    private var trackingActionsForPhase: [PersonAction] {
+        actionsForPhase.filter { $0.action?.type == .tracking }
+    }
+    
+    // 미완료 Critical 액션 개수
+    private var incompleteCriticalCount: Int {
+        criticalActionsForPhase.filter { !$0.isCompleted }.count
     }
     
     // Phase별 완성도 계산
@@ -105,16 +131,30 @@ struct PersonActionChecklistView: View {
         return Double(completed) / Double(phaseActions.count)
     }
     
+    // Phase별 미완료 Critical 액션 개수
+    private func incompleteCriticalCount(for phase: ActionPhase) -> Int {
+        person.actions
+            .filter { $0.action?.phase == phase && $0.action?.type == .critical && !$0.isCompleted }
+            .count
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Phase 선택기
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(ActionPhase.allCases) { phase in
+                        let isCurrentPhase = selectedPhase == phase
+                        let phaseCompletionRate = completionRate(for: phase)
+                        let criticalCount = incompleteCriticalCount(for: phase)
+                        let hasAction = criticalCount > 0
+                        
                         PhaseButton(
                             phase: phase,
-                            isSelected: selectedPhase == phase,
-                            completionRate: completionRate(for: phase)
+                            isSelected: isCurrentPhase,
+                            completionRate: phaseCompletionRate,
+                            hasCriticalActions: hasAction,
+                            incompleteCriticalCount: criticalCount
                         ) {
                             selectedPhase = phase
                         }
@@ -129,17 +169,83 @@ struct PersonActionChecklistView: View {
             
             // 액션 리스트
             List {
-                Section {
-                    ForEach(actionsForPhase) { personAction in
-                        PersonActionRow(personAction: personAction)
+                // 중요한 액션들이 있을 때 우선 표시
+                if !criticalActionsForPhase.isEmpty {
+                    Section {
+                        ForEach(criticalActionsForPhase) { personAction in
+                            PersonActionRow(personAction: personAction)
+                        }
+                        .onDelete { offsets in
+                            deleteActions(from: criticalActionsForPhase, at: offsets)
+                        }
+                    } header: {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("🚨 놓치면 안 되는 중요한 일들")
+                                .fontWeight(.semibold)
+                            
+                            Spacer()
+                            
+                            if incompleteCriticalCount > 0 {
+                                Text("\(incompleteCriticalCount)개 남음")
+                                    .font(.caption)
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .background(Color.red)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                    } footer: {
+                        Text("중요한 액션들입니다. 완료하지 않으면 관계에 영향을 줄 수 있어요.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
                     }
-                    .onDelete(perform: deleteActions)
-                } header: {
-                    Text(selectedPhase.description)
-                } footer: {
-                    Text("왼쪽으로 스와이프하면 액션을 삭제할 수 있어요")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                }
+                
+                // 일반 추적/기록용 액션들
+                if !trackingActionsForPhase.isEmpty {
+                    Section {
+                        ForEach(trackingActionsForPhase) { personAction in
+                            PersonActionRow(personAction: personAction)
+                        }
+                        .onDelete { offsets in
+                            deleteActions(from: trackingActionsForPhase, at: offsets)
+                        }
+                    } header: {
+                        HStack {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .foregroundStyle(.blue)
+                            Text("📝 알아두면 좋은 정보들")
+                                .fontWeight(.medium)
+                        }
+                    } footer: {
+                        Text("이 사람에 대해 더 잘 알기 위한 정보 수집 액션들이에요. 왼쪽으로 스와이프하면 삭제할 수 있어요.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                // 액션이 없는 경우
+                if actionsForPhase.isEmpty {
+                    Section {
+                        VStack(spacing: 16) {
+                            Image(systemName: "checklist")
+                                .font(.system(size: 40))
+                                .foregroundStyle(.secondary)
+                            
+                            Text("\(selectedPhase.rawValue) 단계에 액션이 없어요")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                            
+                            Text("+ 버튼을 눌러 새로운 액션을 추가해보세요")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
+                    }
                 }
             }
             .contentShape(Rectangle())
@@ -192,6 +298,14 @@ struct PersonActionChecklistView: View {
     private func deleteActions(at offsets: IndexSet) {
         for index in offsets {
             let personAction = actionsForPhase[index]
+            context.delete(personAction)
+        }
+        try? context.save()
+    }
+    
+    private func deleteActions(from actions: [PersonAction], at offsets: IndexSet) {
+        for index in offsets {
+            let personAction = actions[index]
             context.delete(personAction)
         }
         try? context.save()
@@ -305,13 +419,32 @@ struct PhaseButton: View {
     let phase: ActionPhase
     let isSelected: Bool
     let completionRate: Double
+    let hasCriticalActions: Bool
+    let incompleteCriticalCount: Int
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
             VStack(spacing: 4) {
-                Text(phase.emoji)
-                    .font(.title2)
+                ZStack {
+                    Text(phase.emoji)
+                        .font(.title2)
+                    
+                    // Critical 액션이 미완료인 경우 빨간 점 표시
+                    if incompleteCriticalCount > 0 {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 8, height: 8)
+                                    .offset(x: -2, y: 2)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+                .frame(height: 30)
                 
                 Text(phase.rawValue)
                     .font(.caption2)
@@ -324,21 +457,41 @@ struct PhaseButton: View {
                             .fill(Color.gray.opacity(0.2))
                         
                         Capsule()
-                            .fill(completionRate >= 1.0 ? Color.green : Color.blue)
+                            .fill(
+                                incompleteCriticalCount > 0 ? Color.red : // Critical 액션이 미완료면 빨간색
+                                completionRate >= 1.0 ? Color.green : Color.blue
+                            )
                             .frame(width: geometry.size.width * completionRate)
                     }
                 }
                 .frame(height: 3)
+                
+                // Critical 액션 개수 표시
+                if incompleteCriticalCount > 0 {
+                    Text("⚠️ \(incompleteCriticalCount)")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.red)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? Color.blue.opacity(0.15) : Color.clear)
+                    .fill(
+                        isSelected 
+                        ? (incompleteCriticalCount > 0 ? Color.red.opacity(0.15) : Color.blue.opacity(0.15))
+                        : Color.clear
+                    )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                    .stroke(
+                        isSelected 
+                        ? (incompleteCriticalCount > 0 ? Color.red : Color.blue)
+                        : Color.clear, 
+                        lineWidth: 2
+                    )
             )
         }
         .buttonStyle(.plain)
@@ -382,51 +535,85 @@ struct PersonActionRow: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         if let action = personAction.action {
-                            HStack(spacing: 6) {
-                                // Critical 액션 완료 시 특별 표시
-                                if action.type == .critical && personAction.isCompleted {
-                                    Image(systemName: "exclamationmark.shield.fill")
+                            HStack(spacing: 8) {
+                                // 액션 타입별 아이콘
+                                if action.type == .critical {
+                                    Image(systemName: personAction.isCompleted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
                                         .font(.caption)
-                                        .foregroundStyle(.green) // 초록색으로 변경 (완료됨을 나타냄)
+                                        .foregroundStyle(personAction.isCompleted ? .green : .red)
+                                } else {
+                                    Image(systemName: personAction.isCompleted ? "chart.line.uptrend.xyaxis" : "chart.line.uptrend.xyaxis.circle")
+                                        .font(.caption)
+                                        .foregroundStyle(personAction.isCompleted ? .green : .blue)
                                 }
                                 
                                 Text(action.title)
                                     .font(.headline)
                                     .foregroundStyle(
                                         personAction.isCompleted 
-                                            ? (action.type == .critical ? .secondary : .secondary) // Critical도 완료 시 회색
-                                            : .primary
+                                            ? .secondary
+                                            : (action.type == .critical ? .primary : .primary)
                                     )
                                     .strikethrough(
-                                        personAction.isCompleted, // 모든 액션에 취소선 적용
-                                        color: action.type == .critical ? .orange : .red // Critical은 오렌지, 일반은 빨간 취소선
+                                        personAction.isCompleted,
+                                        color: action.type == .critical ? .orange : .secondary
                                     )
                                     .animation(.easeInOut(duration: 0.3), value: personAction.isCompleted)
                             }
                             
                             Spacer()
                             
-                            HStack(spacing: 8) {
+                            HStack(spacing: 12) {
+                                // 액션 타입 라벨
+                                if action.type == .critical {
+                                    HStack(spacing: 4) {
+                                        Text("🚨")
+                                            .font(.caption2)
+                                        Text("중요")
+                                            .font(.caption2)
+                                            .fontWeight(.bold)
+                                            .foregroundStyle(personAction.isCompleted ? .gray : .red)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(personAction.isCompleted ? Color.gray.opacity(0.2) : Color.red.opacity(0.1))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(personAction.isCompleted ? Color.gray : Color.red, lineWidth: 1)
+                                    )
+                                } else {
+                                    HStack(spacing: 4) {
+                                        Text("📝")
+                                            .font(.caption2)
+                                        Text("정보")
+                                            .font(.caption2)
+                                            .fontWeight(.medium)
+                                            .foregroundStyle(personAction.isCompleted ? .gray : .blue)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(personAction.isCompleted ? Color.gray.opacity(0.2) : Color.blue.opacity(0.1))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(personAction.isCompleted ? Color.gray : Color.blue, lineWidth: 1)
+                                    )
+                                }
+                                
                                 // 리마인더 버튼
                                 Button {
                                     showingReminderSetting = true
                                 } label: {
                                     Image(systemName: "bell")
                                         .font(.caption)
-                                        .foregroundStyle(.blue)
+                                        .foregroundStyle(.gray)
                                 }
                                 .buttonStyle(.plain)
-                                
-                                if action.type == .critical {
-                                    HStack(spacing: 2) {
-                                        Text("⚠️")
-                                            .font(.caption)
-                                        Text("중요")
-                                            .font(.caption2)
-                                            .foregroundStyle(.orange)
-                                            .fontWeight(.medium)
-                                    }
-                                }
                             }
                         }
                     }
@@ -459,7 +646,7 @@ struct PersonActionRow: View {
                     // 결과값 표시 (중요!)
                     if !personAction.context.isEmpty {
                         HStack(spacing: 6) {
-                            Image(systemName: "note.text")
+                            Image(systemName: personAction.action?.type == .critical ? "exclamationmark.triangle.fill" : "note.text")
                                 .font(.caption2)
                             Text(personAction.context)
                                 .font(.subheadline)
@@ -469,7 +656,11 @@ struct PersonActionRow: View {
                         .padding(.vertical, 6)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.blue.gradient) // 모든 액션 결과값을 파란색으로 통일
+                                .fill(
+                                    personAction.action?.type == .critical 
+                                        ? Color.orange.gradient 
+                                        : Color.blue.gradient
+                                )
                         )
                     }
                     

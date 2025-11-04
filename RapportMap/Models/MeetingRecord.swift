@@ -24,7 +24,7 @@ final class MeetingRecord {
     init(
         id: UUID = UUID(),
         date: Date = Date(),
-        meetingType: MeetingType = .general,
+        meetingType: MeetingType = .mentoring,
         audioFileURL: String? = nil,
         transcribedText: String = "",
         summary: String = "",
