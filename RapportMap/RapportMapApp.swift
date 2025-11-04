@@ -15,7 +15,7 @@ struct RapportMapApp: App {
         WindowGroup {
             PeopleListView()
         }
-        .modelContainer(for: [Person.self, RapportEvent.self])
+        .modelContainer(for: [Person.self, RapportEvent.self, RapportAction.self, PersonAction.self, MeetingRecord.self])
     }
 }
 
