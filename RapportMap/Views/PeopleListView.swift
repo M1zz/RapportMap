@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 struct PeopleListView: View {
     @Environment(\.modelContext) private var context
@@ -342,6 +343,7 @@ struct PersonDetailView: View {
     @State private var isEditing = false
     @State private var showDeleteConfirm = false
     @State private var showingVoiceRecorder = false
+    @State private var showingAddCriticalAction = false
 
     @Bindable var person: Person
 
@@ -399,11 +401,35 @@ struct PersonDetailView: View {
             }
             
             // 크리티컬 액션 리마인더
-            if !getCriticalActions().isEmpty {
-                Section("⚠️ 놓치면 안되는 것들 (완료 후에도 표시됨)") {
-                    ForEach(getCriticalActions(), id: \.id) { personAction in
-                        CriticalActionReminderRow(personAction: personAction)
+            Section("⚠️ 놓치면 안되는 것들") {
+                ForEach(getCriticalActions(), id: \.id) { personAction in
+                    CriticalActionReminderRow(personAction: personAction)
+                }
+                
+                // 크리티컬 액션 추가 버튼
+                Button {
+                    showingAddCriticalAction = true
+                } label: {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundStyle(.orange)
+                        Text("놓치면 안되는 것 추가하기")
+                            .foregroundStyle(.orange)
+                        Spacer()
                     }
+                    .padding(.vertical, 4)
+                }
+                
+                if getCriticalActions().isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("아직 추가된 중요한 것이 없어요")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text("이 사람과의 관계에서 절대 놓치면 안되는 것들을 추가해보세요. (예: 생일 챙기기, 중요한 약속 등)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 8)
                 }
             }
             
@@ -603,6 +629,9 @@ struct PersonDetailView: View {
         .sheet(isPresented: $showingVoiceRecorder) {
             VoiceRecorderView(person: person)
         }
+        .sheet(isPresented: $showingAddCriticalAction) {
+            AddCriticalActionSheet(person: person)
+        }
     }
     
     private var stateColor: Color {
@@ -642,7 +671,8 @@ struct PersonDetailView: View {
     private func getCriticalActions() -> [PersonAction] {
         person.actions
             .filter { 
-                $0.action?.type == .critical // 완료/미완료 상관없이 모든 Critical 액션
+                // 사용자 정의 Critical 액션만 표시 (기본 액션 제외)
+                $0.action?.type == .critical && $0.action?.isDefault == false
             }
             .sorted { 
                 // 미완료를 먼저, 완료된 것들은 아래로 (취소선으로 표시됨)
@@ -1193,5 +1223,197 @@ struct EmptyPeopleView: View {
 
 #Preview {
     PeopleListView()
+}
+
+// MARK: - AddCriticalActionSheet
+struct AddCriticalActionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    
+    let person: Person
+    
+    @State private var title = ""
+    @State private var description = ""
+    @State private var reminderDate: Date?
+    @State private var showingDatePicker = false
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("기본 정보") {
+                    TextField("제목 (예: 생일 챙기기)", text: $title)
+                        .autocorrectionDisabled()
+                    TextField("설명 (선택)", text: $description, axis: .vertical)
+                        .lineLimit(2...4)
+                }
+                
+                Section("리마인더 설정") {
+                    Toggle("리마인더 설정", isOn: Binding(
+                        get: { reminderDate != nil },
+                        set: { newValue in
+                            if newValue {
+                                if reminderDate == nil {
+                                    reminderDate = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+                                }
+                            } else {
+                                reminderDate = nil
+                            }
+                        }
+                    ))
+                    
+                    if let reminderDate = reminderDate {
+                        DatePicker("알림 날짜", selection: Binding(
+                            get: { reminderDate },
+                            set: { self.reminderDate = $0 }
+                        ), displayedComponents: [.date, .hourAndMinute])
+                        .datePickerStyle(.compact)
+                    }
+                }
+                
+                if !title.isEmpty {
+                    Section("미리보기") {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(title)
+                                    .font(.headline)
+                                if !description.isEmpty {
+                                    Text(description)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                if let date = reminderDate {
+                                    Text("알림: \(date.formatted(date: .abbreviated, time: .shortened))")
+                                        .font(.caption)
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                    }
+                }
+                
+                Section {
+                    Text("이 사람과의 관계에서 절대 놓치면 안되는 중요한 것들을 추가하세요.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("예: 생일 챙기기, 중요한 기념일, 약속한 일 등")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("중요한 것 추가")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("추가") {
+                        addCriticalAction()
+                        dismiss()
+                    }
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+    
+    private func addCriticalAction() {
+        // 입력값 검증
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+        
+        // 현재 Person의 현재 Phase에서 가장 큰 order값 찾기 (사용자 정의 Critical 액션만)
+        let currentPhase = person.currentPhase
+        
+        // 안전하게 기존 사용자 정의 Critical 액션들의 order 값을 구하기
+        var maxOrder = 0
+        do {
+            let criticalActionDescriptor = FetchDescriptor<RapportAction>()
+            let allActions = try context.fetch(criticalActionDescriptor)
+            
+            // 사용자 정의 Critical 액션만 필터링 (isDefault = false)
+            let userCriticalActions = allActions.filter { 
+                $0.type == .critical && $0.phase == currentPhase && !$0.isDefault
+            }
+            
+            if !userCriticalActions.isEmpty {
+                maxOrder = userCriticalActions.map { $0.order }.max() ?? 0
+            }
+        } catch {
+            print("Error fetching actions: \(error)")
+            // 에러가 발생해도 계속 진행 (maxOrder는 0으로 유지)
+        }
+        
+        // 1. RapportAction 생성 (전역) - 사용자 정의로 생성
+        let newAction = RapportAction(
+            title: trimmedTitle,
+            actionDescription: description.trimmingCharacters(in: .whitespacesAndNewlines),
+            phase: currentPhase,
+            type: .critical,
+            order: maxOrder + 1000, // 사용자 정의 액션은 1000번대부터 시작하여 기본 액션과 구분
+            isDefault: false, // 사용자 정의
+            isActive: true,
+            placeholder: "예: 어떤 결과였나요?"
+        )
+        
+        // 2. PersonAction 생성 (이 사람용)
+        let personAction = PersonAction(
+            person: person,
+            action: newAction
+        )
+        
+        // 리마인더가 설정된 경우
+        if let reminderDate = reminderDate {
+            personAction.reminderDate = reminderDate
+            personAction.isReminderActive = true
+        }
+        
+        // 데이터베이스에 저장
+        context.insert(newAction)
+        context.insert(personAction)
+        
+        do {
+            try context.save()
+            print("Successfully saved new user-defined critical action: \(trimmedTitle)")
+        } catch {
+            print("Error saving critical action: \(error)")
+            return
+        }
+        
+        // 알림 권한이 있고 리마인더가 설정된 경우 알림 등록
+        if let reminderDate = reminderDate {
+            Task {
+                do {
+                    let hasPermission = await NotificationManager.shared.requestPermission()
+                    if hasPermission {
+                        let reminderTitle = "\(trimmedTitle) 리마인더"
+                        let preferredName = person.preferredName.isEmpty ? person.name : person.preferredName
+                        let reminderBody = "\(preferredName)님과 관련된 중요한 일을 확인해보세요"
+                        
+                        let success = await NotificationManager.shared.scheduleActionReminder(
+                            for: personAction,
+                            at: reminderDate,
+                            title: reminderTitle,
+                            body: reminderBody
+                        )
+                        
+                        if success {
+                            print("Successfully scheduled reminder for: \(trimmedTitle)")
+                        } else {
+                            print("Failed to schedule reminder for: \(trimmedTitle)")
+                        }
+                    }
+                } catch {
+                    print("Error setting up reminder: \(error)")
+                }
+            }
+        }
+    }
 }
 
