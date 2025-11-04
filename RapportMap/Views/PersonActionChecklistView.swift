@@ -84,6 +84,8 @@ struct PersonActionChecklistView: View {
     
     @State private var selectedPhase: ActionPhase
     @State private var showingAddAction = false
+    @State private var showingUserActions = false // 사용자 추가 액션 표시 여부
+    @State private var debugMode = false // 디버그 모드 토글
     
     init(person: Person) {
         self.person = person
@@ -92,8 +94,36 @@ struct PersonActionChecklistView: View {
     
     // 이 사람의 액션들을 Phase별로 필터링하고 타입별로 그룹화
     private var actionsForPhase: [PersonAction] {
-        person.actions
-            .filter { $0.action?.phase == selectedPhase }
+        // 디버깅용 출력 (디버그 모드에서만)
+        if debugMode {
+            print("🔍 [DEBUG] person.actions 총 개수: \(person.actions.count)")
+            print("🔍 [DEBUG] showingUserActions: \(showingUserActions)")
+            print("🔍 [DEBUG] selectedPhase: \(selectedPhase)")
+        }
+        
+        let baseFilter = showingUserActions 
+            ? person.actions.filter { 
+                let isUserAction = $0.action?.isDefault == false
+                if debugMode {
+                    print("🔍 [DEBUG] User action check - title: \($0.action?.title ?? "nil"), isDefault: \($0.action?.isDefault ?? true), result: \(isUserAction)")
+                }
+                return isUserAction
+            }
+            : person.actions.filter { 
+                let isPhaseMatch = $0.action?.phase == selectedPhase
+                let isDefaultAction = $0.action?.isDefault == true
+                let result = isPhaseMatch && isDefaultAction
+                if debugMode {
+                    print("🔍 [DEBUG] Phase action check - title: \($0.action?.title ?? "nil"), phase: \($0.action?.phase.rawValue ?? "nil"), isDefault: \($0.action?.isDefault ?? false), result: \(result)")
+                }
+                return result
+            }
+        
+        if debugMode {
+            print("🔍 [DEBUG] baseFilter 결과 개수: \(baseFilter.count)")
+        }
+        
+        return baseFilter
             .sorted { action1, action2 in
                 // 1순위: Critical 액션을 우선으로
                 if action1.action?.type != action2.action?.type {
@@ -138,12 +168,17 @@ struct PersonActionChecklistView: View {
             .count
     }
     
+    // 사용자 추가 액션 개수
+    private func getUserActionCount() -> Int {
+        person.actions.filter { $0.action?.isDefault == false }.count
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Phase 선택기
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(ActionPhase.allCases) { phase in
+                    ForEach(ActionPhase.allCases, id: \.self) { phase in
                         let isCurrentPhase = selectedPhase == phase
                         let phaseCompletionRate = completionRate(for: phase)
                         let criticalCount = incompleteCriticalCount(for: phase)
@@ -151,12 +186,24 @@ struct PersonActionChecklistView: View {
                         
                         PhaseButton(
                             phase: phase,
-                            isSelected: isCurrentPhase,
+                            isSelected: isCurrentPhase && !showingUserActions,
                             completionRate: phaseCompletionRate,
+                            action: {
+                                selectedPhase = phase
+                                showingUserActions = false
+                            },
                             hasCriticalActions: hasAction,
                             incompleteCriticalCount: criticalCount
+                        )
+                    }
+                    
+                    // 사용자 추가 액션 버튼 (관계유지 다음에)
+                    if ActionPhase.allCases.last == .phase6 {
+                        UserActionsButton(
+                            isSelected: showingUserActions,
+                            userActionCount: getUserActionCount()
                         ) {
-                            selectedPhase = phase
+                            showingUserActions = true
                         }
                     }
                 }
@@ -169,82 +216,179 @@ struct PersonActionChecklistView: View {
             
             // 액션 리스트
             List {
-                // 중요한 액션들이 있을 때 우선 표시
-                if !criticalActionsForPhase.isEmpty {
-                    Section {
-                        ForEach(criticalActionsForPhase) { personAction in
-                            PersonActionRow(personAction: personAction)
-                        }
-                        .onDelete { offsets in
-                            deleteActions(from: criticalActionsForPhase, at: offsets)
-                        }
-                    } header: {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                            Text("🚨 놓치면 안 되는 중요한 일들")
-                                .fontWeight(.semibold)
-                            
-                            Spacer()
-                            
-                            if incompleteCriticalCount > 0 {
-                                Text("\(incompleteCriticalCount)개 남음")
-                                    .font(.caption)
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .background(Color.red)
-                                    .clipShape(Capsule())
+                if showingUserActions {
+                    // 사용자 추가 액션들
+                    if !actionsForPhase.isEmpty {
+                        Section {
+                            ForEach(actionsForPhase) { personAction in
+                                PersonActionRow(personAction: personAction)
                             }
+                            .onDelete { offsets in
+                                deleteActions(at: offsets)
+                            }
+                        } header: {
+                            HStack {
+                                Image(systemName: "person.crop.circle.badge.plus")
+                                    .foregroundStyle(.purple)
+                                Text("🎯 내가 추가한 중요한 것들")
+                                    .fontWeight(.semibold)
+                            }
+                        } footer: {
+                            Text("내가 직접 추가한 중요한 액션들입니다. 왼쪽으로 스와이프하면 삭제할 수 있어요.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                    } footer: {
-                        Text("중요한 액션들입니다. 완료하지 않으면 관계에 영향을 줄 수 있어요.")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                    } else {
+                        Section {
+                            VStack(spacing: 16) {
+                                Image(systemName: "person.crop.circle.badge.plus")
+                                    .font(.system(size: 40))
+                                    .foregroundStyle(.purple)
+                                
+                                Text("아직 추가한 액션이 없어요")
+                                    .font(.headline)
+                                    .foregroundStyle(.secondary)
+                                
+                                Text("+ 버튼을 눌러 이 사람과의 관계에서 중요한 것들을 추가해보세요")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        }
                     }
-                }
-                
-                // 일반 추적/기록용 액션들
-                if !trackingActionsForPhase.isEmpty {
-                    Section {
-                        ForEach(trackingActionsForPhase) { personAction in
-                            PersonActionRow(personAction: personAction)
+                } else {
+                    // 기본 액션들 (기존 로직)
+                    // 중요한 액션들이 있을 때 우선 표시
+                    if !criticalActionsForPhase.isEmpty {
+                        Section {
+                            ForEach(criticalActionsForPhase) { personAction in
+                                PersonActionRow(personAction: personAction)
+                            }
+                            .onDelete { offsets in
+                                deleteActions(from: criticalActionsForPhase, at: offsets)
+                            }
+                        } header: {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.orange)
+                                Text("🚨 놓치면 안 되는 중요한 일들")
+                                    .fontWeight(.semibold)
+                                
+                                Spacer()
+                                
+                                if incompleteCriticalCount > 0 {
+                                    Text("\(incompleteCriticalCount)개 남음")
+                                        .font(.caption)
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 2)
+                                        .background(Color.red)
+                                        .clipShape(Capsule())
+                                }
+                            }
+                        } footer: {
+                            Text("중요한 액션들입니다. 완료하지 않으면 관계에 영향을 줄 수 있어요. 눈 모양 버튼을 눌러 PersonDetailView에 표시하도록 설정하세요.")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
                         }
-                        .onDelete { offsets in
-                            deleteActions(from: trackingActionsForPhase, at: offsets)
-                        }
-                    } header: {
-                        HStack {
-                            Image(systemName: "chart.line.uptrend.xyaxis")
-                                .foregroundStyle(.blue)
-                            Text("📝 알아두면 좋은 정보들")
-                                .fontWeight(.medium)
-                        }
-                    } footer: {
-                        Text("이 사람에 대해 더 잘 알기 위한 정보 수집 액션들이에요. 왼쪽으로 스와이프하면 삭제할 수 있어요.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
-                }
-                
-                // 액션이 없는 경우
-                if actionsForPhase.isEmpty {
-                    Section {
-                        VStack(spacing: 16) {
-                            Image(systemName: "checklist")
-                                .font(.system(size: 40))
-                                .foregroundStyle(.secondary)
-                            
-                            Text("\(selectedPhase.rawValue) 단계에 액션이 없어요")
-                                .font(.headline)
-                                .foregroundStyle(.secondary)
-                            
-                            Text("+ 버튼을 눌러 새로운 액션을 추가해보세요")
-                                .font(.subheadline)
+                    
+                    // 일반 추적/기록용 액션들
+                    if !trackingActionsForPhase.isEmpty {
+                        Section {
+                            ForEach(trackingActionsForPhase) { personAction in
+                                PersonActionRow(personAction: personAction)
+                            }
+                            .onDelete { offsets in
+                                deleteActions(from: trackingActionsForPhase, at: offsets)
+                            }
+                        } header: {
+                            HStack {
+                                Image(systemName: "chart.line.uptrend.xyaxis")
+                                    .foregroundStyle(.blue)
+                                Text("📝 알아두면 좋은 정보들")
+                                    .fontWeight(.medium)
+                            }
+                        } footer: {
+                            Text("이 사람에 대해 더 잘 알기 위한 정보 수집 액션들이에요. 왼쪽으로 스와이프하면 삭제할 수 있어요.")
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 40)
+                    }
+                    
+                    // 액션이 없는 경우
+                    if actionsForPhase.isEmpty {
+                        Section {
+                            VStack(spacing: 16) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .font(.system(size: 40))
+                                    .foregroundStyle(.orange)
+                                
+                                Text("\(selectedPhase.rawValue) 단계에 액션이 없어요")
+                                    .font(.headline)
+                                    .foregroundStyle(.secondary)
+                                
+                                Text("데이터를 불러오는 중이거나 액션이 누락되었을 수 있어요")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                                
+                                // 디버깅 정보
+                                VStack(spacing: 4) {
+                                    HStack {
+                                        Toggle("디버그 모드", isOn: $debugMode)
+                                            .font(.caption)
+                                        Spacer()
+                                    }
+                                    
+                                    if debugMode {
+                                        Text("전체 액션 수: \(person.actions.count)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        Text("현재 Phase: \(selectedPhase.rawValue)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        Text("사용자 액션 모드: \(showingUserActions ? "ON" : "OFF")")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        Text("필터링된 액션 수: \(actionsForPhase.count)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(8)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                                
+                                // 새로고침 버튼
+                                Button {
+                                    if debugMode {
+                                        print("🔄 [DEBUG] 강제 새로고침 버튼 클릭")
+                                    }
+                                    DataSeeder.seedDefaultActionsIfNeeded(context: context)
+                                    DataSeeder.createPersonActionsForNewPerson(person: person, context: context)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "arrow.clockwise")
+                                        Text("액션 다시 로드")
+                                    }
+                                    .font(.subheadline)
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Color.blue)
+                                    .cornerRadius(8)
+                                }
+                                
+                                Text("+ 버튼을 눌러 새로운 액션을 추가할 수도 있어요")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        }
                     }
                 }
             }
@@ -266,7 +410,7 @@ struct PersonActionChecklistView: View {
             
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
-                    ForEach(ActionPhase.allCases) { phase in
+                    ForEach(ActionPhase.allCases, id: \.self) { phase in
                         Button {
                             person.currentPhase = phase
                             try? context.save()
@@ -285,12 +429,69 @@ struct PersonActionChecklistView: View {
             }
         }
         .sheet(isPresented: $showingAddAction) {
-            AddCustomActionSheet(person: person, phase: selectedPhase)
+            if showingUserActions {
+                AddCriticalActionSheet(person: person)
+            } else {
+                AddCustomActionSheet(person: person, phase: selectedPhase)
+            }
         }
         .onAppear {
+            if debugMode {
+                print("🚀 [PersonActionChecklistView] onAppear 시작")
+                print("🚀 [DEBUG] Person: \(person.name)")
+                print("🚀 [DEBUG] Current Phase: \(person.currentPhase)")
+                print("🚀 [DEBUG] Total actions: \(person.actions.count)")
+            }
+            
             // 액션이 없으면 생성
             if person.actions.isEmpty {
+                if debugMode {
+                    print("🚀 [DEBUG] 액션이 비어있음 - 새로 생성")
+                }
                 DataSeeder.createPersonActionsForNewPerson(person: person, context: context)
+            } else {
+                if debugMode {
+                    print("🚀 [DEBUG] 기존 액션들:")
+                    for action in person.actions {
+                        if let rapportAction = action.action {
+                            print("  - \(rapportAction.title) (Phase: \(rapportAction.phase.rawValue), Type: \(rapportAction.type.rawValue), Default: \(rapportAction.isDefault))")
+                        } else {
+                            print("  - [액션 없음] PersonAction ID: \(action.id)")
+                        }
+                    }
+                }
+            }
+            
+            // DataSeeder에서 기본 액션들도 확인해보자
+            Task {
+                do {
+                    let descriptor = FetchDescriptor<RapportAction>()
+                    let allRapportActions = try context.fetch(descriptor)
+                    
+                    if debugMode {
+                        print("🚀 [DEBUG] 전체 RapportAction 개수: \(allRapportActions.count)")
+                    }
+                    
+                    let defaultActions = allRapportActions.filter { $0.isDefault }
+                    if debugMode {
+                        print("🚀 [DEBUG] 기본 액션 개수: \(defaultActions.count)")
+                    }
+                    
+                    // 만약 기본 액션이 없다면 생성
+                    if defaultActions.isEmpty {
+                        if debugMode {
+                            print("🚀 [DEBUG] 기본 액션이 없음 - DataSeeder 실행")
+                        }
+                        DataSeeder.seedDefaultActionsIfNeeded(context: context)
+                        
+                        // 기본 액션 생성 후 PersonAction도 다시 생성
+                        DataSeeder.createPersonActionsForNewPerson(person: person, context: context)
+                    }
+                } catch {
+                    if debugMode {
+                        print("🚀 [ERROR] RapportAction fetch 실패: \(error)")
+                    }
+                }
             }
         }
     }
@@ -406,11 +607,81 @@ struct AddCustomActionSheet: View {
         // 2. PersonAction 생성 (이 사람용)
         let personAction = PersonAction(
             person: person,
-            action: newAction
+            action: newAction,
+            isVisibleInDetail: newAction.type == .critical ? false : false // 기본적으로 숨김, 사용자가 선택해서 보이게 할 수 있음
         )
         context.insert(personAction)
         
         try? context.save()
+    }
+}
+
+// MARK: - UserActionsButton
+struct UserActionsButton: View {
+    let isSelected: Bool
+    let userActionCount: Int
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                ZStack {
+                    Text("🎯")
+                        .font(.title2)
+                    
+                    // 사용자 액션 개수 표시
+                    if userActionCount > 0 {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Circle()
+                                    .fill(Color.purple)
+                                    .frame(width: 8, height: 8)
+                                    .offset(x: -2, y: 2)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+                .frame(height: 30)
+                
+                Text("사용자 추가")
+                    .font(.caption2)
+                    .fontWeight(isSelected ? .semibold : .regular)
+                
+                // 완성도 바 (항상 보라색)
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.gray.opacity(0.2))
+                        
+                        Capsule()
+                            .fill(Color.purple)
+                            .frame(width: userActionCount > 0 ? geometry.size.width * 0.8 : 0)
+                    }
+                }
+                .frame(height: 3)
+                
+                // 사용자 액션 개수 표시
+                if userActionCount > 0 {
+                    Text("📝 \(userActionCount)")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.purple)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isSelected ? Color.purple.opacity(0.15) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.purple : Color.clear, lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -419,9 +690,11 @@ struct PhaseButton: View {
     let phase: ActionPhase
     let isSelected: Bool
     let completionRate: Double
-    let hasCriticalActions: Bool
-    let incompleteCriticalCount: Int
     let action: () -> Void
+    
+    // Phase에 critical 액션이 있는지 확인하기 위한 person 참조 필요
+    var hasCriticalActions: Bool = false
+    var incompleteCriticalCount: Int = 0
     
     var body: some View {
         Button(action: action) {
@@ -605,6 +878,19 @@ struct PersonActionRow: View {
                                     )
                                 }
                                 
+                                // PersonDetailView 표시 토글 버튼 (Critical 액션만)
+                                if action.type == .critical {
+                                    Button {
+                                        personAction.isVisibleInDetail.toggle()
+                                        try? context.save()
+                                    } label: {
+                                        Image(systemName: personAction.isVisibleInDetail ? "eye.fill" : "eye.slash")
+                                            .font(.caption)
+                                            .foregroundStyle(personAction.isVisibleInDetail ? .blue : .gray)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                
                                 // 리마인더 버튼
                                 Button {
                                     showingReminderSetting = true
@@ -631,7 +917,7 @@ struct PersonActionRow: View {
                             Image(systemName: "info.circle.fill")
                                 .font(.caption2)
                                 .foregroundStyle(.green)
-                            Text("중요한 액션이 완료되었습니다. 체크박스를 다시 누르면 완료를 취소할 수 있어요.")
+                            Text("중요한 액션이 완료되었습니다. 체크박스를 다시 누르면 완료를 취소할 수 있고, 눈 모양 버튼으로 PersonDetailView에 표시/숨김을 설정할 수 있어요.")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }

@@ -54,8 +54,16 @@ struct PeopleListView: View {
                     let new = Person(name: name, contact: contact)
                     context.insert(new)
                     
-                    // 새 Person에 대한 액션 인스턴스들 생성
-                    DataSeeder.createPersonActionsForNewPerson(person: new, context: context)
+                    // 먼저 저장
+                    do {
+                        try context.save()
+                        print("✅ 새 Person 저장 완료: \(name)")
+                        
+                        // 새 Person에 대한 액션 인스턴스들 생성
+                        DataSeeder.createPersonActionsForNewPerson(person: new, context: context)
+                    } catch {
+                        print("❌ 새 Person 저장 실패: \(error)")
+                    }
                 }
             }
             .onAppear {
@@ -422,10 +430,10 @@ struct PersonDetailView: View {
                 
                 if getCriticalActions().isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("아직 추가된 중요한 것이 없어요")
+                        Text("여기에 표시할 중요한 것이 없어요")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text("이 사람과의 관계에서 절대 놓치면 안되는 것들을 추가해보세요. (예: 생일 챙기기, 중요한 약속 등)")
+                        Text("라포 액션 체크리스트에서 중요한 액션들을 완료한 후 눈 모양 버튼을 눌러 여기에 표시하도록 설정하거나, 위의 버튼으로 새로운 중요한 것을 추가해보세요.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -433,19 +441,40 @@ struct PersonDetailView: View {
                 }
             }
             
-            // 알게 된 정보 (트래킹 액션)
+            // 알게 된 정보 (트래킹 액션만)
             if !getCompletedTrackingActions().isEmpty {
                 Section("📝 알게 된 정보") {
                     ForEach(getCompletedTrackingActions(), id: \.id) { personAction in
                         if let action = personAction.action, !personAction.context.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(action.title)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                HStack(spacing: 6) {
+                                    Image(systemName: "chart.line.uptrend.xyaxis")
+                                        .font(.caption)
+                                        .foregroundStyle(.blue)
+                                    
+                                    Text(action.title)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    
+                                    Text("정보")
+                                        .font(.caption2)
+                                        .fontWeight(.bold)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Capsule().fill(Color.blue.opacity(0.2)))
+                                        .foregroundStyle(.blue)
+                                }
                                 
                                 Text(personAction.context)
                                     .font(.subheadline)
                                     .foregroundStyle(.primary)
+                                
+                                // 완료일 표시
+                                if let completedDate = personAction.completedDate {
+                                    Text("완료: \(completedDate.formatted(date: .abbreviated, time: .omitted))")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                             .padding(.vertical, 4)
                         }
@@ -671,8 +700,8 @@ struct PersonDetailView: View {
     private func getCriticalActions() -> [PersonAction] {
         person.actions
             .filter { 
-                // 사용자 정의 Critical 액션만 표시 (기본 액션 제외)
-                $0.action?.type == .critical && $0.action?.isDefault == false
+                // Critical 액션이면서 PersonDetailView에서 보이도록 설정된 것들만
+                $0.action?.type == .critical && $0.isVisibleInDetail
             }
             .sorted { 
                 // 미완료를 먼저, 완료된 것들은 아래로 (취소선으로 표시됨)
@@ -821,8 +850,9 @@ struct CriticalActionReminderRow: View {
                         // 완료된 액션의 결과 표시
                         if personAction.isCompleted && !personAction.context.isEmpty {
                             HStack(spacing: 6) {
-                                Image(systemName: "note.text")
+                                Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.caption2)
+                                    .foregroundStyle(.orange)
                                 Text(personAction.context)
                                     .font(.subheadline)
                             }
@@ -831,13 +861,24 @@ struct CriticalActionReminderRow: View {
                             .padding(.vertical, 4)
                             .background(
                                 RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color.blue.gradient) // 일관성을 위해 파란색으로 변경
+                                    .fill(Color.orange.gradient) // Critical 액션이므로 오렌지색 유지
                             )
                         }
                     }
                 }
                 
                 Spacer()
+                
+                // 숨기기 버튼
+                Button {
+                    personAction.isVisibleInDetail = false
+                    try? context.save()
+                } label: {
+                    Image(systemName: "eye.slash")
+                        .font(.caption)
+                        .foregroundStyle(.gray)
+                }
+                .buttonStyle(.plain)
                 
                 // 완료 체크박스
                 Button {
@@ -1365,7 +1406,8 @@ struct AddCriticalActionSheet: View {
         // 2. PersonAction 생성 (이 사람용)
         let personAction = PersonAction(
             person: person,
-            action: newAction
+            action: newAction,
+            isVisibleInDetail: true // 사용자가 직접 추가한 중요한 액션은 기본적으로 PersonDetailView에 표시
         )
         
         // 리마인더가 설정된 경우

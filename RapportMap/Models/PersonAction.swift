@@ -29,6 +29,9 @@ final class PersonAction {
     var reminderDate: Date?  // 크리티컬 액션일 경우 알림 날짜
     var isReminderActive: Bool
     
+    // PersonDetailView에 표시 여부
+    var isVisibleInDetail: Bool
+    
     init(
         id: UUID = UUID(),
         person: Person? = nil,
@@ -39,7 +42,8 @@ final class PersonAction {
         note: String = "",
         context: String = "",
         reminderDate: Date? = nil,
-        isReminderActive: Bool = false
+        isReminderActive: Bool = false,
+        isVisibleInDetail: Bool = false
     ) {
         self.id = id
         self.person = person
@@ -51,6 +55,7 @@ final class PersonAction {
         self.context = context
         self.reminderDate = reminderDate
         self.isReminderActive = isReminderActive
+        self.isVisibleInDetail = isVisibleInDetail
     }
 }
 
