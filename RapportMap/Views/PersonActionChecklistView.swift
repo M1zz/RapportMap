@@ -9,64 +9,7 @@ import SwiftUI
 import SwiftData
 import UserNotifications
 
-// MARK: - NotificationManager
-class NotificationManager {
-    static let shared = NotificationManager()
-    
-    private init() {}
-    
-    func requestPermission() async -> Bool {
-        do {
-            let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
-            return granted
-        } catch {
-            print("알림 권한 요청 실패: \(error)")
-            return false
-        }
-    }
-    
-    func scheduleActionReminder(
-        for personAction: PersonAction,
-        at date: Date,
-        title: String,
-        body: String
-    ) async -> Bool {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-        content.badge = 1
-        
-        // 메타데이터 추가
-        if let personId = personAction.person?.persistentModelID.hashValue,
-           let actionId = personAction.action?.persistentModelID.hashValue {
-            content.userInfo = [
-                "personId": personId,
-                "actionId": actionId,
-                "type": "actionReminder"
-            ]
-        }
-        
-        let calendar = Calendar.current
-        let dateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
-        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
-        
-        let identifier = "reminder_\(UUID().uuidString)"
-        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-        
-        do {
-            try await UNUserNotificationCenter.current().add(request)
-            return true
-        } catch {
-            print("알림 스케줄링 실패: \(error)")
-            return false
-        }
-    }
-    
-    func cancelAllActionReminders() {
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
-    }
-}
+
 
 // MARK: - Keyboard Dismiss Helper
 extension View {

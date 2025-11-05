@@ -26,6 +26,11 @@ final class Person {
     var workStyle: String  // 업무 스타일 (예: "문서 선호, 대면 미팅 싫어함")
     var background: String  // 배경 정보 (예: "서울 출신, 전 직장 네이버")
     
+    // 상호작용 노트
+    var mentoringNotes: String?  // 멘토링 관련 메모
+    var mealNotes: String?      // 식사 관련 메모
+    var contactNotes: String?   // 연락 관련 메모
+    
     // 관계
     @Relationship(deleteRule: .cascade, inverse: \PersonAction.person)
     var actions: [PersonAction] = []
@@ -51,7 +56,10 @@ final class Person {
         preferences: String = "",
         importantDates: String = "",
         workStyle: String = "",
-        background: String = ""
+        background: String = "",
+        mentoringNotes: String? = nil,
+        mealNotes: String? = nil,
+        contactNotes: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -71,6 +79,9 @@ final class Person {
         self.importantDates = importantDates
         self.workStyle = workStyle
         self.background = background
+        self.mentoringNotes = mentoringNotes
+        self.mealNotes = mealNotes
+        self.contactNotes = contactNotes
     }
 }
 

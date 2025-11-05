@@ -11,6 +11,77 @@ import SwiftData
 @MainActor
 class DataSeeder {
     
+    /// 기존 데이터의 한국어 ActionType을 영어로 마이그레이션
+    static func migrateKoreanActionTypes(context: ModelContext) {
+        // 마이그레이션이 이미 완료되었는지 확인
+        let migrationKey = "ActionTypeMigrationCompleted"
+        if UserDefaults.standard.bool(forKey: migrationKey) {
+            return
+        }
+        
+        print("🔄 ActionType 마이그레이션 시작...")
+        
+        do {
+            // 모든 RapportAction을 가져와서 수동으로 마이그레이션
+            let allActions = try context.fetch(FetchDescriptor<RapportAction>())
+            var migrationCount = 0
+            
+            for action in allActions {
+                // SwiftData에서는 enum 값을 직접 변경하기 어려우므로
+                // 새로운 액션으로 교체하는 방식 사용
+                let currentTypeString = action.type.rawValue
+                
+                let newType: ActionType
+                switch currentTypeString {
+                case "크리티컬", "중요":
+                    newType = .critical
+                    migrationCount += 1
+                case "정보수집":
+                    newType = .tracking
+                    migrationCount += 1
+                case "관계유지":
+                    newType = .maintenance
+                    migrationCount += 1
+                default:
+                    continue // 이미 영어 값이면 건너뛰기
+                }
+                
+                // 새로운 액션 생성 (기존 값 복사)
+                let newAction = RapportAction(
+                    id: action.id,
+                    title: action.title,
+                    actionDescription: action.actionDescription,
+                    phase: action.phase,
+                    type: newType,
+                    order: action.order,
+                    isDefault: action.isDefault,
+                    isActive: action.isActive,
+                    placeholder: action.placeholder
+                )
+                
+                // 기존 PersonAction들을 새로운 액션으로 연결
+                let personActions = action.personActions
+                for personAction in personActions {
+                    personAction.action = newAction
+                }
+                
+                // 기존 액션 삭제 후 새로운 액션 삽입
+                context.delete(action)
+                context.insert(newAction)
+            }
+            
+            try context.save()
+            
+            // 마이그레이션 완료 플래그 설정
+            UserDefaults.standard.set(true, forKey: migrationKey)
+            
+            print("✅ ActionType 마이그레이션 완료: \(migrationCount)개 변경됨")
+            
+        } catch {
+            print("❌ ActionType 마이그레이션 실패: \(error)")
+        }
+    }
+    
     /// 기본 액션이 없으면 30개를 생성
     static func seedDefaultActionsIfNeeded(context: ModelContext) {
         let descriptor = FetchDescriptor<RapportAction>(

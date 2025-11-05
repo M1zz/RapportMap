@@ -25,6 +25,12 @@ struct PeopleListView: View {
                             NavigationLink(destination: PersonDetailView(person: person)) {
                                 PersonCard(person: person)
                             }
+                            .simultaneousGesture(
+                                TapGesture().onEnded {
+                                    // PersonDetailView로 이동할 때 상태 저장
+                                    AppStateManager.shared.selectPerson(person)
+                                }
+                            )
                         }
                         .onDelete(perform: delete)
                     }
@@ -355,6 +361,8 @@ struct PersonDetailView: View {
     @State private var showDeleteConfirm = false
     @State private var showingVoiceRecorder = false
     @State private var showingAddCriticalAction = false
+    @State private var showingInteractionEdit = false
+    @State private var selectedInteractionType: RecentInteractionsView.InteractionType?
 
     @Bindable var person: Person
 
@@ -364,6 +372,11 @@ struct PersonDetailView: View {
     
     var body: some View {
         Form {
+            // 📅 최근 상호작용 (맨 위로 이동)
+            Section("📅 최근 상호작용") {
+                RecentInteractionsView(person: person)
+            }
+            
             // 빠른 액션 버튼들
             Section {
                 Button {
@@ -382,6 +395,41 @@ struct PersonDetailView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
+                        
+                        Image(systemName: "arrow.right")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                // 빠른 상호작용 기록
+                HStack(spacing: 16) {
+                    ForEach([RecentInteractionsView.InteractionType.mentoring, .meal, .contact], id: \.self) { type in
+                        Button {
+                            // 현재 시간으로 기록하고 편집 시트 열기
+                            type.setDate(for: person, date: Date())
+                            try? context.save()
+                            selectedInteractionType = type
+                            showingInteractionEdit = true
+                            
+                            // 햅틱 피드백
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                            impactFeedback.impactOccurred()
+                        } label: {
+                            VStack(spacing: 6) {
+                                Text(type.emoji)
+                                    .font(.title2)
+                                Text(type.title)
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundStyle(.blue)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(10)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -561,44 +609,7 @@ struct PersonDetailView: View {
                     }
                 }
             }
-            
-            Section(header: Text("최근 상호작용")) {
-                // Mentoring
-                DateEditorRow(title: "마지막 멘토링", date: $person.lastMentoring, isEditing: isEditing)
-                Button {
-                    person.lastMentoring = Date()
-                    try? context.save()
-                } label: {
-                    Label("멘토링 지금 기록하기", systemImage: "clock.badge.checkmark")
-                }
 
-                // Meal
-                DateEditorRow(title: "마지막 식사", date: $person.lastMeal, isEditing: isEditing)
-                Button {
-                    person.lastMeal = Date()
-                    try? context.save()
-                } label: {
-                    Label("식사 지금 기록하기", systemImage: "clock.badge.checkmark")
-                }
-
-                // Contact
-                DateEditorRow(title: "마지막 접촉", date: $person.lastContact, isEditing: isEditing)
-                Button {
-                    person.lastContact = Date()
-                    try? context.save()
-                } label: {
-                    Label("접촉 지금 기록하기", systemImage: "bubble.left")
-                }
-
-                if isEditing {
-                    TextField("마지막 질문", text: Binding(
-                        get: { person.lastQuestion ?? "" },
-                        set: { person.lastQuestion = $0.isEmpty ? nil : $0 }
-                    ))
-                } else if let lastQuestion = person.lastQuestion, !lastQuestion.isEmpty {
-                    Text("마지막 질문: \(lastQuestion)")
-                }
-            }
             
             Section("대화/상태") {
                 if isEditing {
@@ -664,6 +675,8 @@ struct PersonDetailView: View {
         }
         .confirmationDialog("정말 삭제할까요?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("삭제", role: .destructive) {
+                // Person 삭제 시 앱 상태도 초기화
+                AppStateManager.shared.clearSelection()
                 context.delete(person)
                 try? context.save()
                 dismiss()
@@ -675,6 +688,11 @@ struct PersonDetailView: View {
         }
         .sheet(isPresented: $showingAddCriticalAction) {
             AddCriticalActionSheet(person: person)
+        }
+        .sheet(isPresented: $showingInteractionEdit) {
+            if let selectedType = selectedInteractionType {
+                EditInteractionSheet(person: person, interactionType: selectedType)
+            }
         }
     }
     
@@ -725,6 +743,666 @@ struct PersonDetailView: View {
                 }
                 return ($0.action?.order ?? 0) < ($1.action?.order ?? 0)
             }
+    }
+}
+
+// MARK: - RecentInteractionsView
+struct RecentInteractionsView: View {
+    @Environment(\.modelContext) private var context
+    @Bindable var person: Person
+    @State private var showingEditSheet = false
+    @State private var showingHistory = false
+    @State private var interactionToEdit: InteractionType?
+    
+    enum InteractionType: CaseIterable {
+        case mentoring
+        case meal
+        case contact
+        
+        var title: String {
+            switch self {
+            case .mentoring: return "멘토링"
+            case .meal: return "식사"
+            case .contact: return "연락"
+            }
+        }
+        
+        var emoji: String {
+            switch self {
+            case .mentoring: return "🧑‍🏫"
+            case .meal: return "🍽️"  
+            case .contact: return "💬"
+            }
+        }
+        
+        var systemImage: String {
+            switch self {
+            case .mentoring: return "person.badge.clock"
+            case .meal: return "fork.knife"
+            case .contact: return "bubble.left"
+            }
+        }
+        
+        func getDate(from person: Person) -> Date? {
+            switch self {
+            case .mentoring: return person.lastMentoring
+            case .meal: return person.lastMeal
+            case .contact: return person.lastContact
+            }
+        }
+        
+        func setDate(for person: Person, date: Date?) {
+            switch self {
+            case .mentoring: person.lastMentoring = date
+            case .meal: person.lastMeal = date
+            case .contact: person.lastContact = date
+            }
+        }
+    }
+    
+    // 최근 상호작용들을 날짜순으로 정렬
+    private var sortedInteractions: [(InteractionType, Date)] {
+        let interactions: [(InteractionType, Date?)] = [
+            (.mentoring, person.lastMentoring),
+            (.meal, person.lastMeal),
+            (.contact, person.lastContact)
+        ]
+        
+        return interactions
+            .compactMap { type, date in
+                guard let date = date else { return nil }
+                return (type, date)
+            }
+            .sorted { $0.1 > $1.1 } // 최신순
+    }
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            // 히스토리 보기 헤더
+            HStack {
+                Text("최근 상호작용")
+                    .font(.headline)
+                
+                Spacer()
+                
+                Button {
+                    showingHistory = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.caption)
+                        Text("기록 보기")
+                            .font(.caption)
+                    }
+                    .foregroundStyle(.blue)
+                }
+            }
+            
+            // 가로 스크롤 카드들
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(sortedInteractions, id: \.0) { interactionType, date in
+                        InteractionCard(
+                            type: interactionType,
+                            date: date,
+                            person: person,
+                            onTap: {
+                                interactionToEdit = interactionType
+                                showingEditSheet = true
+                            }
+                        )
+                    }
+                    
+                    // 기록이 없는 상호작용들도 표시 (빈 카드)
+                    ForEach(InteractionType.allCases.filter { type in
+                        !sortedInteractions.contains { $0.0 == type }
+                    }, id: \.self) { type in
+                        EmptyInteractionCard(type: type) {
+                            interactionToEdit = type
+                            showingEditSheet = true
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .scrollTargetBehavior(.viewAligned)
+            
+            // 빠른 액션 버튼들
+            VStack(spacing: 8) {
+                Text("빠른 기록")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                HStack(spacing: 12) {
+                    ForEach(InteractionType.allCases, id: \.self) { type in
+                        Button {
+                            // "지금" 기록 후 편집 시트 열기
+                            type.setDate(for: person, date: Date())
+                            try? context.save()
+                            
+                            // 햅틱 피드백
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                            impactFeedback.impactOccurred()
+                            
+                            // 편집 시트 열기
+                            interactionToEdit = type
+                            showingEditSheet = true
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: type.systemImage)
+                                    .font(.caption)
+                                Text("지금")
+                                    .font(.caption2)
+                            }
+                            .foregroundStyle(.blue)
+                            .padding(8)
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding()
+            .background(Color(.systemGray6))
+            .cornerRadius(12)
+        }
+        .sheet(isPresented: $showingEditSheet) {
+            if let interactionType = interactionToEdit {
+                EditInteractionSheet(person: person, interactionType: interactionType)
+            }
+        }
+        .sheet(isPresented: $showingHistory) {
+            InteractionHistoryView(person: person)
+        }
+    }
+}
+
+// MARK: - InteractionHistoryView
+struct InteractionHistoryView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    let person: Person
+    
+    // 실제 기록된 상호작용들만 표시
+    private var historyRecords: [(Date, RecentInteractionsView.InteractionType)] {
+        var records: [(Date, RecentInteractionsView.InteractionType)] = []
+        
+        // 실제 기록된 상호작용들만 추가
+        if let mentoring = person.lastMentoring {
+            records.append((mentoring, .mentoring))
+        }
+        if let meal = person.lastMeal {
+            records.append((meal, .meal))
+        }
+        if let contact = person.lastContact {
+            records.append((contact, .contact))
+        }
+        
+        // 날짜순 정렬 (최신순)
+        return records.sorted { $0.0 > $1.0 }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            if historyRecords.isEmpty {
+                // 빈 상태 표시
+                VStack(spacing: 20) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 60))
+                        .foregroundStyle(.secondary)
+                    
+                    Text("상호작용 기록이 없어요")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    
+                    Text("멘토링, 식사, 연락 등의 기록을 추가해보세요.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    
+                    Button("기록 추가하러 가기") {
+                        dismiss()
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(Color.blue)
+                    .foregroundStyle(.white)
+                    .cornerRadius(10)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.systemGroupedBackground))
+            } else {
+                List {
+                    ForEach(Array(historyRecords.enumerated()), id: \.offset) { index, record in
+                        InteractionHistoryRow(
+                            date: record.0,
+                            type: record.1,
+                            person: person
+                        )
+                    }
+                }
+            }
+        }
+        .navigationTitle("상호작용 기록")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("완료") {
+                    dismiss()
+                }
+            }
+        }
+    }
+}
+
+// MARK: - InteractionHistoryRow
+struct InteractionHistoryRow: View {
+    let date: Date
+    let type: RecentInteractionsView.InteractionType
+    let person: Person
+    
+    @Environment(\.modelContext) private var context
+    @State private var showingEditSheet = false
+    
+    private var isCurrentRecord: Bool {
+        switch type {
+        case .mentoring: return person.lastMentoring == date
+        case .meal: return person.lastMeal == date
+        case .contact: return person.lastContact == date
+        }
+    }
+    
+    private var relativeDate: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: .now)
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // 타입 아이콘
+            Text(type.emoji)
+                .font(.title2)
+                .frame(width: 40)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(type.title)
+                        .font(.headline)
+                    
+                    if isCurrentRecord {
+                        Text("현재")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.blue))
+                            .foregroundStyle(.white)
+                    }
+                }
+                
+                Text(relativeDate)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                
+                Text(date.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            
+            Spacer()
+            
+            // 편집 버튼 (현재 기록인 경우에만)
+            if isCurrentRecord {
+                Button {
+                    showingEditSheet = true
+                } label: {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.blue)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 4)
+        .sheet(isPresented: $showingEditSheet) {
+            EditInteractionSheet(person: person, interactionType: type)
+        }
+    }
+}
+
+// MARK: - InteractionCard
+struct InteractionCard: View {
+    let type: RecentInteractionsView.InteractionType
+    let date: Date
+    let onTap: () -> Void
+    let person: Person
+    
+    init(type: RecentInteractionsView.InteractionType, date: Date, person: Person, onTap: @escaping () -> Void) {
+        self.type = type
+        self.date = date
+        self.person = person
+        self.onTap = onTap
+    }
+    
+    private var relativeDate: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: .now)
+    }
+    
+    private var isRecent: Bool {
+        let daysSince = Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
+        return daysSince <= 3
+    }
+    
+    private var notes: String? {
+        switch type {
+        case .mentoring: return person.mentoringNotes
+        case .meal: return person.mealNotes
+        case .contact: return person.contactNotes
+        }
+    }
+    
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                // 미모지와 타이틀
+                VStack(spacing: 4) {
+                    Text(type.emoji)
+                        .font(.largeTitle)
+                    
+                    Text(type.title)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                }
+                
+                // 상대적 시간
+                Text(relativeDate)
+                    .font(.caption)
+                    .foregroundStyle(isRecent ? .green : .secondary)
+                    .fontWeight(isRecent ? .semibold : .regular)
+                
+                // 정확한 날짜
+                Text(date.formatted(date: .abbreviated, time: .omitted))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                
+                // 내용 표시 (있는 경우)
+                if let notes = notes, !notes.isEmpty {
+                    Text(notes)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .padding(.horizontal, 4)
+                }
+            }
+            .padding()
+            .frame(width: 120, height: notes?.isEmpty == false ? 160 : 140)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(isRecent ? Color.green.opacity(0.1) : Color(.systemGray6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(isRecent ? Color.green.opacity(0.3) : Color.clear, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - EmptyInteractionCard
+struct EmptyInteractionCard: View {
+    let type: RecentInteractionsView.InteractionType
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                VStack(spacing: 4) {
+                    Text(type.emoji)
+                        .font(.largeTitle)
+                        .opacity(0.5)
+                    
+                    Text(type.title)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                }
+                
+                Text("기록 없음")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                Text("탭해서 추가")
+                    .font(.caption2)
+                    .foregroundStyle(.blue)
+            }
+            .padding()
+            .frame(width: 120, height: 140)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(.systemGray6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - EditInteractionSheet
+struct EditInteractionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    
+    @Bindable var person: Person
+    let interactionType: RecentInteractionsView.InteractionType
+    
+    @State private var selectedDate: Date
+    @State private var hasDate: Bool
+    @State private var notes: String = ""
+    
+    init(person: Person, interactionType: RecentInteractionsView.InteractionType) {
+        self.person = person
+        self.interactionType = interactionType
+        
+        let currentDate = interactionType.getDate(from: person) ?? Date()
+        self._selectedDate = State(initialValue: currentDate)
+        self._hasDate = State(initialValue: interactionType.getDate(from: person) != nil)
+        
+        // 기존 노트 불러오기
+        self._notes = State(initialValue: Self.getExistingNotes(person: person, type: interactionType))
+    }
+    
+    // Person 모델에 mentoringNotes, mealNotes, contactNotes 프로퍼티가 추가되었습니다.
+    
+    private static func getExistingNotes(person: Person, type: RecentInteractionsView.InteractionType) -> String {
+        switch type {
+        case .mentoring: return person.mentoringNotes ?? ""
+        case .meal: return person.mealNotes ?? ""
+        case .contact: return person.contactNotes ?? ""
+        }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("상호작용 정보") {
+                    HStack {
+                        Text(interactionType.emoji)
+                            .font(.largeTitle)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(interactionType.title)
+                                .font(.headline)
+                            Text("마지막 \(interactionType.title) 날짜를 설정해주세요")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                
+                Section("날짜 설정") {
+                    Toggle("날짜 기록하기", isOn: $hasDate)
+                    
+                    if hasDate {
+                        DatePicker("날짜와 시간", selection: $selectedDate, displayedComponents: [.date, .hourAndMinute])
+                            .datePickerStyle(.compact)
+                        
+                        // 빠른 선택 버튼들
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("빠른 선택")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 8) {
+                                QuickDateButton(title: "지금", date: Date()) { date in
+                                    selectedDate = date
+                                }
+                                QuickDateButton(title: "1시간 전", date: Date().addingTimeInterval(-3600)) { date in
+                                    selectedDate = date
+                                }
+                                QuickDateButton(title: "오늘 오전", date: Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()) { date in
+                                    selectedDate = date
+                                }
+                                QuickDateButton(title: "어제", date: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()) { date in
+                                    selectedDate = date
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // 내용 추가 섹션
+                Section("상호작용 내용") {
+                    TextField("이번 \(interactionType.title)에서 어떤 이야기를 나눴나요?", text: $notes, axis: .vertical)
+                        .lineLimit(3...8)
+                        .autocorrectionDisabled(false)
+                }
+                
+                if hasDate {
+                    Section("미리보기") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: interactionType.systemImage)
+                                    .foregroundStyle(.blue)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("마지막 \(interactionType.title)")
+                                        .font(.headline)
+                                    
+                                    Text(selectedDate.formatted(date: .long, time: .shortened))
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    
+                                    let relativeFormatter = RelativeDateTimeFormatter()
+                                    Text(relativeFormatter.localizedString(for: selectedDate, relativeTo: .now))
+                                        .font(.caption)
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                            
+                            // 내용 미리보기
+                            if !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Divider()
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("내용:")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text(notes)
+                                        .font(.body)
+                                        .foregroundStyle(.primary)
+                                        .padding(.top, 2)
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(12)
+                    }
+                }
+                
+                if hasDate {
+                    Section {
+                        Button("기록 삭제", role: .destructive) {
+                            hasDate = false
+                        }
+                    }
+                }
+            }
+            .navigationTitle("\(interactionType.title) 편집")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        saveInteraction()
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func saveInteraction() {
+        if hasDate {
+            interactionType.setDate(for: person, date: selectedDate)
+        } else {
+            interactionType.setDate(for: person, date: nil)
+        }
+        
+        // 노트 저장
+        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch interactionType {
+        case .mentoring:
+            person.mentoringNotes = trimmedNotes.isEmpty ? nil : trimmedNotes
+        case .meal:
+            person.mealNotes = trimmedNotes.isEmpty ? nil : trimmedNotes
+        case .contact:
+            person.contactNotes = trimmedNotes.isEmpty ? nil : trimmedNotes
+        }
+        
+        do {
+            try context.save()
+            print("✅ \(interactionType.title) 기록 저장 완료")
+            
+            // 햅틱 피드백
+            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+            impactFeedback.impactOccurred()
+        } catch {
+            print("❌ \(interactionType.title) 기록 저장 실패: \(error)")
+        }
+    }
+}
+
+// MARK: - QuickDateButton
+struct QuickDateButton: View {
+    let title: String
+    let date: Date
+    let onTap: (Date) -> Void
+    
+    var body: some View {
+        Button {
+            onTap(date)
+        } label: {
+            Text(title)
+                .font(.caption)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.blue.opacity(0.1))
+                .foregroundStyle(.blue)
+                .cornerRadius(16)
+        }
+        .buttonStyle(.plain)
     }
 }
 
