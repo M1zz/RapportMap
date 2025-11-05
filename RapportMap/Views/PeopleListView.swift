@@ -195,6 +195,7 @@ struct AddPersonSheet: View {
 
 struct PersonCard: View {
     let person: Person
+    @State private var showingQuickRecord = false
 
     private var color: Color {
         switch person.state {
@@ -282,6 +283,24 @@ struct PersonCard: View {
                     Chip(text: "미해결 \(person.unansweredCount)")
                         .foregroundStyle(.orange)
                 }
+                // 새로운 정보들 간단 표시 + 클릭 가능한 기록 버튼들
+                if let _ = person.recentConcerns, !person.recentConcerns!.isEmpty {
+                    Chip(text: "🧠 고민")
+                        .foregroundStyle(.purple)
+                }
+                if let _ = person.unresolvedPromises, !person.unresolvedPromises!.isEmpty {
+                    Chip(text: "🤝 약속")
+                        .foregroundStyle(.red)
+                }
+                
+                // 빠른 기록 버튼 (새로 추가)
+                Button {
+                    showingQuickRecord = true
+                } label: {
+                    Chip(text: "📝 기록하기")
+                        .foregroundStyle(.blue)
+                }
+                .buttonStyle(.plain)
             }
 
             if let q = person.lastQuestion, !q.isEmpty {
@@ -304,6 +323,9 @@ struct PersonCard: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+        .sheet(isPresented: $showingQuickRecord) {
+            QuickRecordSheet(person: person)
+        }
     }
 }
 
@@ -314,6 +336,232 @@ struct Chip: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(Capsule().fill(.thinMaterial))
+    }
+}
+
+// MARK: - QuickRecordSheet
+struct QuickRecordSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    
+    @Bindable var person: Person
+    
+    @State private var recentConcerns: String = ""
+    @State private var receivedQuestions: String = ""
+    @State private var unresolvedPromises: String = ""
+    @State private var unansweredCount: Int = 0
+    @State private var isNeglected: Bool = false
+    @State private var lastContact: Date?
+    @State private var hasContactDate: Bool = false
+    
+    init(person: Person) {
+        self.person = person
+        self._recentConcerns = State(initialValue: person.recentConcerns ?? "")
+        self._receivedQuestions = State(initialValue: person.receivedQuestions ?? "")
+        self._unresolvedPromises = State(initialValue: person.unresolvedPromises ?? "")
+        self._unansweredCount = State(initialValue: person.unansweredCount)
+        self._isNeglected = State(initialValue: person.isNeglected)
+        self._lastContact = State(initialValue: person.lastContact)
+        self._hasContactDate = State(initialValue: person.lastContact != nil)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack {
+                        Text(person.name)
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        
+                        Spacer()
+                        
+                        Text(person.state.emoji)
+                            .font(.title)
+                    }
+                    .padding(.vertical, 4)
+                }
+                
+                Section("📞 연락 기록") {
+                    Toggle("방금 연락했음", isOn: $hasContactDate)
+                    
+                    if hasContactDate {
+                        DatePicker("연락 시간", selection: Binding(
+                            get: { lastContact ?? Date() },
+                            set: { lastContact = $0 }
+                        ), displayedComponents: [.date, .hourAndMinute])
+                        .datePickerStyle(.compact)
+                        
+                        // 빠른 시간 선택
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
+                            Button("지금") {
+                                lastContact = Date()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            
+                            Button("1시간 전") {
+                                lastContact = Date().addingTimeInterval(-3600)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            
+                            Button("오늘 오전") {
+                                lastContact = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date())
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+                }
+                
+                Section("💬 대화 상태") {
+                    Stepper(value: $unansweredCount, in: 0...20) {
+                        Text("미해결 대화: \(unansweredCount)개")
+                    }
+                    
+                    Toggle("관계가 소홀해짐", isOn: $isNeglected)
+                }
+                
+                Section(header: Text("🧠 최근의 고민"), footer: Text("예: 이직 고민, 건강 문제, 인간관계 등")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)) {
+                    TextField("이 사람이 최근에 고민하고 있는 것은?", text: $recentConcerns, axis: .vertical)
+                        .lineLimit(3...6)
+                        .autocorrectionDisabled(false)
+                }
+                
+                Section(header: Text("❓ 받았던 질문"), footer: Text("예: 추천 요청, 조언 구함, 도움 요청 등")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)) {
+                    TextField("이 사람에게 받은 질문이나 요청사항은?", text: $receivedQuestions, axis: .vertical)
+                        .lineLimit(3...6)
+                        .autocorrectionDisabled(false)
+                }
+                
+                Section(header: Text("🤝 미해결된 약속"), footer: Text("예: 약속한 만남, 전해줄 정보, 도와주기로 한 일 등")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)) {
+                    TextField("아직 지키지 못한 약속이나 해야 할 일은?", text: $unresolvedPromises, axis: .vertical)
+                        .lineLimit(3...6)
+                        .autocorrectionDisabled(false)
+                }
+                
+                // 미리보기 섹션
+                if !recentConcerns.isEmpty || !receivedQuestions.isEmpty || !unresolvedPromises.isEmpty || unansweredCount > 0 || isNeglected {
+                    Section("📋 기록 미리보기") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            if !recentConcerns.isEmpty {
+                                PreviewCard(icon: "🧠", title: "고민", content: recentConcerns, color: .purple)
+                            }
+                            
+                            if !receivedQuestions.isEmpty {
+                                PreviewCard(icon: "❓", title: "질문", content: receivedQuestions, color: .blue)
+                            }
+                            
+                            if !unresolvedPromises.isEmpty {
+                                PreviewCard(icon: "🤝", title: "약속", content: unresolvedPromises, color: .red)
+                            }
+                            
+                            if unansweredCount > 0 {
+                                HStack(spacing: 8) {
+                                    Text("💬")
+                                        .font(.caption)
+                                    Text("미해결 대화 \(unansweredCount)개")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                            
+                            if isNeglected {
+                                HStack(spacing: 8) {
+                                    Text("⚠️")
+                                        .font(.caption)
+                                    Text("관계가 소홀해짐")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("대화 기록")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        saveRecord()
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func saveRecord() {
+        // 텍스트 필드 내용 저장
+        person.recentConcerns = recentConcerns.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : recentConcerns.trimmingCharacters(in: .whitespacesAndNewlines)
+        person.receivedQuestions = receivedQuestions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : receivedQuestions.trimmingCharacters(in: .whitespacesAndNewlines)
+        person.unresolvedPromises = unresolvedPromises.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : unresolvedPromises.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // 숫자/불린 값들 저장
+        person.unansweredCount = unansweredCount
+        person.isNeglected = isNeglected
+        
+        // 연락 날짜 저장
+        if hasContactDate {
+            person.lastContact = lastContact
+        }
+        
+        // 데이터베이스 저장
+        do {
+            try context.save()
+            print("✅ \(person.name)님의 대화 기록 저장 완료")
+            
+            // 햅틱 피드백
+            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+            impactFeedback.impactOccurred()
+        } catch {
+            print("❌ 대화 기록 저장 실패: \(error)")
+        }
+    }
+}
+
+// MARK: - PreviewCard (Helper)
+struct PreviewCard: View {
+    let icon: String
+    let title: String
+    let content: String
+    let color: Color
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(icon)
+                    .font(.caption)
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(color)
+            }
+            
+            Text(content)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(color.opacity(0.1))
+        .cornerRadius(8)
     }
 }
 
@@ -619,6 +867,45 @@ struct PersonDetailView: View {
                         Text("미해결 대화: \(person.unansweredCount)")
                     }
                     Toggle("관계가 소홀함", isOn: $person.isNeglected)
+                    
+                    // 최근의 고민
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("최근의 고민")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("이 사람이 최근에 고민하고 있는 것은?", text: Binding(
+                            get: { person.recentConcerns ?? "" },
+                            set: { person.recentConcerns = $0.isEmpty ? nil : $0 }
+                        ), axis: .vertical)
+                        .lineLimit(2...4)
+                        .textFieldStyle(.roundedBorder)
+                    }
+                    
+                    // 받았던 질문
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("받았던 질문")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("이 사람에게 받은 질문이나 요청사항은?", text: Binding(
+                            get: { person.receivedQuestions ?? "" },
+                            set: { person.receivedQuestions = $0.isEmpty ? nil : $0 }
+                        ), axis: .vertical)
+                        .lineLimit(2...4)
+                        .textFieldStyle(.roundedBorder)
+                    }
+                    
+                    // 미해결된 약속
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("미해결된 약속")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("아직 지키지 못한 약속이나 해야 할 일은?", text: Binding(
+                            get: { person.unresolvedPromises ?? "" },
+                            set: { person.unresolvedPromises = $0.isEmpty ? nil : $0 }
+                        ), axis: .vertical)
+                        .lineLimit(2...4)
+                        .textFieldStyle(.roundedBorder)
+                    }
                 } else {
                     if person.unansweredCount > 0 {
                         Text("미해결 대화: \(person.unansweredCount)")
@@ -627,6 +914,98 @@ struct PersonDetailView: View {
                     if person.isNeglected {
                         Text("이 사람과의 관계가 소홀해졌습니다. 다시 연결하세요.")
                             .foregroundColor(.blue)
+                    }
+                    
+                    // 최근의 고민 표시
+                    if let concerns = person.recentConcerns, !concerns.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "brain.head.profile")
+                                    .font(.caption)
+                                    .foregroundStyle(.purple)
+                                Text("최근의 고민")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.purple)
+                            }
+                            Text(concerns)
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color.purple.opacity(0.1))
+                                .cornerRadius(8)
+                        }
+                    }
+                    
+                    // 받았던 질문 표시
+                    if let questions = person.receivedQuestions, !questions.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "questionmark.bubble")
+                                    .font(.caption)
+                                    .foregroundStyle(.blue)
+                                Text("받았던 질문")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.blue)
+                            }
+                            Text(questions)
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(8)
+                        }
+                    }
+                    
+                    // 미해결된 약속 표시
+                    if let promises = person.unresolvedPromises, !promises.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "hand.raised")
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                                Text("미해결된 약속")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.red)
+                            }
+                            Text(promises)
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color.red.opacity(0.1))
+                                .cornerRadius(8)
+                        }
+                    }
+                    
+                    // 빈 상태일 때 안내 메시지
+                    if person.unansweredCount == 0 && 
+                       !person.isNeglected && 
+                       (person.recentConcerns?.isEmpty ?? true) && 
+                       (person.receivedQuestions?.isEmpty ?? true) && 
+                       (person.unresolvedPromises?.isEmpty ?? true) {
+                        VStack(spacing: 8) {
+                            Image(systemName: "bubble.left.and.text.page")
+                                .font(.title3)
+                                .foregroundStyle(.secondary)
+                            
+                            Text("대화 기록이 비어있어요")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            
+                            Text("편집 모드에서 최근 고민, 받은 질문, 약속 등을 기록해보세요")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
                     }
                 }
             }

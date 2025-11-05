@@ -31,6 +31,11 @@ final class Person {
     var mealNotes: String?      // 식사 관련 메모
     var contactNotes: String?   // 연락 관련 메모
     
+    // 대화 컨텍스트
+    var recentConcerns: String?     // 최근의 고민
+    var receivedQuestions: String?  // 받았던 질문
+    var unresolvedPromises: String? // 미해결된 약속
+    
     // 관계
     @Relationship(deleteRule: .cascade, inverse: \PersonAction.person)
     var actions: [PersonAction] = []
@@ -59,7 +64,10 @@ final class Person {
         background: String = "",
         mentoringNotes: String? = nil,
         mealNotes: String? = nil,
-        contactNotes: String? = nil
+        contactNotes: String? = nil,
+        recentConcerns: String? = nil,
+        receivedQuestions: String? = nil,
+        unresolvedPromises: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -82,6 +90,9 @@ final class Person {
         self.mentoringNotes = mentoringNotes
         self.mealNotes = mealNotes
         self.contactNotes = contactNotes
+        self.recentConcerns = recentConcerns
+        self.receivedQuestions = receivedQuestions
+        self.unresolvedPromises = unresolvedPromises
     }
 }
 
