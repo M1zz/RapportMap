@@ -11,7 +11,7 @@ final class InteractionRecord {
     var duration: TimeInterval? // 만남의 경우 지속 시간
     var location: String? // 만남 장소
     
-    @Relationship(deleteRule: .nullify, inverse: \Person.interactionRecords)
+    @Relationship(deleteRule: .nullify)
     var person: Person?
     
     init(

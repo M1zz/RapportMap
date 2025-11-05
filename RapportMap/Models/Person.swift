@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import SwiftUI
 
 @Model
 final class Person {
@@ -42,6 +43,9 @@ final class Person {
     
     @Relationship(deleteRule: .cascade, inverse: \MeetingRecord.person)
     var meetingRecords: [MeetingRecord] = []
+    
+    @Relationship(deleteRule: .cascade, inverse: \InteractionRecord.person)
+    var interactionRecords: [InteractionRecord] = []
 
     init(
         id: UUID = UUID(),
@@ -128,11 +132,11 @@ enum RelationshipState: String, Codable, CaseIterable {
         }
     }
     
-    var color: String {
+    var color: Color {
         switch self {
-        case .distant: return "#FF6B6B"
-        case .warming: return "#FFD93D"
-        case .close: return "#6BCF7F"
+        case .distant: return .blue
+        case .warming: return .orange
+        case .close: return .pink
         }
     }
 }
@@ -144,11 +148,11 @@ extension Person {
     func calculateRelationshipState() -> RelationshipState {
         let score = calculateRelationshipScore()
         
-        // 점수 기반으로 관계 상태 결정
+        // 점수 기준을 더 관대하게 조정
         switch score {
-        case 70...: 
+        case 65...: 
             return .close
-        case 40..<70: 
+        case 35..<65: 
             return .warming
         default: 
             return .distant
@@ -157,11 +161,11 @@ extension Person {
     
     /// 관계 점수 계산 (0-100)
     func calculateRelationshipScore() -> Double {
-        var totalScore: Double = 30 // 기본 점수
+        var totalScore: Double = 40 // 기본 점수를 40으로 상향 (더 관대하게)
         let now = Date()
         let calendar = Calendar.current
         
-        // 1. 시간 경과에 따른 감점 (가장 중요한 요소)
+        // 1. 시간 경과에 따른 감점/가점 (가장 중요한 요소)
         let timeDecayScore = calculateTimeDecayScore()
         totalScore += timeDecayScore
         
@@ -173,24 +177,28 @@ extension Person {
         let interactionScore = calculateInteractionFrequencyScore()
         totalScore += interactionScore
         
-        // 4. 미해결 대화 감점 (최대 -15점)
-        let unsolvedPenalty = min(Double(unansweredCount) * 3, 15)
+        // 4. 미해결 대화 감점 (최대 -12점으로 완화)
+        let unsolvedPenalty = min(Double(unansweredCount) * 2.5, 12)
         totalScore -= unsolvedPenalty
         
-        // 5. 소홀함 플래그 감점 (-10점)
+        // 5. 소홀함 플래그 감점 (-8점으로 완화)
         if isNeglected {
-            totalScore -= 10
+            totalScore -= 8
         }
         
-        // 6. 관계 지속 기간 보너스 (0-10점)
+        // 6. 관계 지속 기간 보너스 (0-15점으로 상향)
         let relationshipDuration = calendar.dateComponents([.day], from: relationshipStartDate, to: now).day ?? 0
-        let durationBonus = min(Double(relationshipDuration) / 30.0 * 10, 10) // 30일당 최대 10점
+        let durationBonus = min(Double(relationshipDuration) / 20.0 * 15, 15) // 20일당 최대 15점
         totalScore += durationBonus
+        
+        // 7. 최근 상호작용 보너스 (새로 추가)
+        let recentInteractionBonus = calculateRecentInteractionBonus()
+        totalScore += recentInteractionBonus
         
         return max(0, min(100, totalScore))
     }
     
-    /// 시간 경과에 따른 점수 계산 (-30 ~ +15점)
+    /// 시간 경과에 따른 점수 계산 (-25 ~ +20점으로 개선)
     private func calculateTimeDecayScore() -> Double {
         let now = Date()
         let calendar = Calendar.current
@@ -202,22 +210,24 @@ extension Person {
         
         let daysSinceLastInteraction = calendar.dateComponents([.day], from: recentInteractionDate, to: now).day ?? 0
         
-        // 시간 경과에 따른 점수 (exponential decay)
+        // 시간 경과에 따른 점수 (더 관대하게 조정)
         switch daysSinceLastInteraction {
         case 0...1:
-            return 15 // 최근 1일 이내: 보너스
+            return 20 // 최근 1일 이내: 큰 보너스
         case 2...3:
-            return 10 // 2-3일: 좋음
+            return 15 // 2-3일: 좋은 보너스
         case 4...7:
-            return 5  // 4-7일: 보통
+            return 10  // 4-7일: 보통 보너스
         case 8...14:
-            return 0  // 1-2주: 중립
-        case 15...30:
-            return -10 // 2-4주: 감점 시작
-        case 31...60:
-            return -20 // 1-2달: 큰 감점
+            return 5  // 1-2주: 작은 보너스
+        case 15...21:
+            return 0  // 2-3주: 중립
+        case 22...35:
+            return -8 // 3-5주: 작은 감점
+        case 36...60:
+            return -15 // 5주-2달: 중간 감점
         default:
-            return -30 // 2달 이상: 최대 감점
+            return -25 // 2달 이상: 최대 감점 (기존 -30에서 완화)
         }
     }
     
@@ -268,27 +278,52 @@ extension Person {
         }
     }
     
+    /// 최근 상호작용 보너스 계산 (0-10점) - 새로 추가
+    private func calculateRecentInteractionBonus() -> Double {
+        let now = Date()
+        let calendar = Calendar.current
+        let threeDaysAgo = calendar.date(byAdding: .day, value: -3, to: now) ?? now
+        
+        var recentBonus: Double = 0
+        
+        // 최근 3일 내 각 상호작용마다 보너스
+        if let lastContact = lastContact, lastContact >= threeDaysAgo {
+            recentBonus += 3
+        }
+        if let lastMeal = lastMeal, lastMeal >= threeDaysAgo {
+            recentBonus += 3  
+        }
+        if let lastMentoring = lastMentoring, lastMentoring >= threeDaysAgo {
+            recentBonus += 4 // 멘토링은 더 큰 보너스
+        }
+        
+        return min(recentBonus, 10) // 최대 10점
+    }
+    
     /// 관계 상태를 자동으로 업데이트
     func updateRelationshipState() {
         let calculatedState = calculateRelationshipState()
+        let currentScore = calculateRelationshipScore()
         
         // 상태가 변경된 경우에만 업데이트
         if state != calculatedState {
             let oldState = state
             state = calculatedState
             
-            print("🔄 [RelationshipState] \(name)님과의 관계 상태 변경: \(oldState.rawValue) → \(calculatedState.rawValue)")
+            print("🔄 [RelationshipState] \(name)님과의 관계 상태 변경: \(oldState.rawValue) → \(calculatedState.rawValue) (점수: \(Int(currentScore)))")
             
-            // 관계가 악화된 경우 소홀함 플래그 설정
-            if calculatedState == .distant && oldState != .distant {
-                isNeglected = true
-                print("⚠️ [RelationshipState] \(name)님과의 관계가 소홀해졌습니다")
-            }
             // 관계가 개선된 경우 소홀함 플래그 해제
-            else if calculatedState != .distant && isNeglected {
+            if calculatedState != .distant && isNeglected {
                 isNeglected = false
-                print("✅ [RelationshipState] \(name)님과의 관계가 개선되었습니다")
+                print("✅ [RelationshipState] \(name)님과의 관계가 개선되어 소홀함 플래그를 해제했습니다")
             }
+            // 관계가 악화된 경우에만 소홀함 플래그 설정 (기존보다 완화)
+            else if calculatedState == .distant && oldState == .close && currentScore < 30 {
+                isNeglected = true
+                print("⚠️ [RelationshipState] \(name)님과의 관계가 많이 소홀해졌습니다")
+            }
+        } else {
+            print("📊 [RelationshipState] \(name)님 관계 점수: \(Int(currentScore)) (\(calculatedState.rawValue))")
         }
     }
     
@@ -312,6 +347,53 @@ extension Person {
             criticalActionCompletionRate: calculateCriticalActionCompletionRate(),
             recommendations: generateRecommendations()
         )
+    }
+    
+    /// 상호작용 기록 추가
+    func addInteractionRecord(type: InteractionType, date: Date = Date(), notes: String? = nil, duration: TimeInterval? = nil, location: String? = nil) {
+        let record = InteractionRecord(
+            date: date,
+            type: type,
+            notes: notes,
+            duration: duration,
+            location: location
+        )
+        record.person = self
+        interactionRecords.append(record)
+        
+        // 기존 lastXXX 필드도 업데이트 (호환성을 위해)
+        switch type {
+        case .mentoring:
+            lastMentoring = date
+            if let notes = notes {
+                mentoringNotes = notes
+            }
+        case .meal:
+            lastMeal = date
+            if let notes = notes {
+                mealNotes = notes
+            }
+        case .contact, .call, .message:
+            lastContact = date
+            if let notes = notes {
+                contactNotes = notes
+            }
+        case .meeting:
+            // meeting은 별도로 처리
+            break
+        }
+    }
+    
+    /// 특정 타입의 상호작용 기록들 반환
+    func getInteractionRecords(ofType type: InteractionType) -> [InteractionRecord] {
+        return interactionRecords
+            .filter { $0.type == type }
+            .sorted { $0.date > $1.date }
+    }
+    
+    /// 모든 상호작용 기록을 날짜순으로 정렬하여 반환
+    func getAllInteractionRecordsSorted() -> [InteractionRecord] {
+        return interactionRecords.sorted { $0.date > $1.date }
     }
     
     private func calculateActionCompletionRate() -> Double {

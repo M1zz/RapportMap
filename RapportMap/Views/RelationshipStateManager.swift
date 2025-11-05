@@ -50,12 +50,14 @@ class RelationshipStateManager {
     /// 소홀한 관계들 찾기
     func findNeglectedRelationships(context: ModelContext) -> [Person] {
         do {
-            let descriptor = FetchDescriptor<Person>(
-                predicate: #Predicate<Person> { person in
-                    person.state.rawValue == "distant" || person.isNeglected
-                }
-            )
-            return try context.fetch(descriptor)
+            // SwiftData predicate doesn't support enum case comparisons directly
+            // So we'll fetch all people and filter in memory
+            let descriptor = FetchDescriptor<Person>()
+            let people = try context.fetch(descriptor)
+            
+            return people.filter { person in
+                person.state == .distant || person.isNeglected
+            }
         } catch {
             print("❌ [RelationshipStateManager] 소홀한 관계 조회 실패: \(error)")
             return []

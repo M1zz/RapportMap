@@ -19,15 +19,34 @@ struct RapportMapApp: App {
     }
 }
 
+// 앱의 루트 뷰 상태 정의
+enum AppRootState {
+    case loading
+    case restoringSession(Person)  // 이전 세션 복원
+    case showingPeopleList        // 사람 목록 화면 표시
+}
+
 // 앱의 루트 뷰 - 상태 복원 로직 담당
 struct AppRootView: View {
     @Environment(\.modelContext) private var context
     @State private var appStateManager = AppStateManager.shared
     @State private var isLoading = true
     
+    private var currentState: AppRootState {
+        if isLoading {
+            return .loading
+        } else if appStateManager.shouldShowPersonDetail,
+                  let selectedPerson = appStateManager.selectedPerson {
+            return .restoringSession(selectedPerson)
+        } else {
+            return .showingPeopleList
+        }
+    }
+    
     var body: some View {
         Group {
-            if isLoading {
+            switch currentState {
+            case .loading:
                 // 로딩 화면
                 VStack {
                     ProgressView()
@@ -37,8 +56,8 @@ struct AppRootView: View {
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
                 }
-            } else if appStateManager.shouldShowPersonDetail,
-                      let selectedPerson = appStateManager.selectedPerson {
+                
+            case .restoringSession(let selectedPerson):
                 // PersonDetailView를 직접 표시
                 NavigationStack {
                     PersonDetailView(person: selectedPerson)
@@ -54,7 +73,8 @@ struct AppRootView: View {
                             // 실제 앱 종료나 홈으로 갔을 때만 상태가 복원됨
                         }
                 }
-            } else {
+                
+            case .showingPeopleList:
                 // 기본 PeopleListView
                 PeopleListView()
             }
