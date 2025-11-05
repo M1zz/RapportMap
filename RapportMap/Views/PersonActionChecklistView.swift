@@ -356,7 +356,11 @@ struct PersonActionChecklistView: View {
                     ForEach(ActionPhase.allCases, id: \.self) { phase in
                         Button {
                             person.currentPhase = phase
-                            try? context.save()
+                            do {
+                                try context.save()
+                            } catch {
+                                print("❌ Phase 변경 저장 실패: \(error)")
+                            }
                         } label: {
                             HStack {
                                 Text("\(phase.emoji) \(phase.rawValue)")
@@ -441,18 +445,160 @@ struct PersonActionChecklistView: View {
     
     private func deleteActions(at offsets: IndexSet) {
         for index in offsets {
+            guard index < actionsForPhase.count else { continue }
             let personAction = actionsForPhase[index]
             context.delete(personAction)
         }
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            print("❌ PersonAction 삭제 저장 실패: \(error)")
+        }
     }
     
     private func deleteActions(from actions: [PersonAction], at offsets: IndexSet) {
         for index in offsets {
+            guard index < actions.count else { continue }
             let personAction = actions[index]
             context.delete(personAction)
         }
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            print("❌ PersonAction 삭제 저장 실패: \(error)")
+        }
+    }
+}
+
+// MARK: - AddCriticalActionSheet (사용자 중요 액션 추가)
+struct AddCriticalActionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    
+    let person: Person
+    
+    @State private var title = ""
+    @State private var description = ""
+    @State private var placeholder = ""
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                // Transparent tap area to dismiss keyboard
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        endEditing()
+                    }
+
+                Form {
+                    Section {
+                        TextField("제목", text: $title)
+                            .autocorrectionDisabled(true)
+                        TextField("설명 (선택)", text: $description, axis: .vertical)
+                            .lineLimit(2...4)
+                        TextField("입력 예시 (선택)", text: $placeholder)
+                            .autocorrectionDisabled(true)
+                    } header: {
+                        HStack {
+                            Text("🎯")
+                                .font(.title2)
+                            VStack(alignment: .leading) {
+                                Text("중요한 것들을 추가하세요")
+                                    .font(.headline)
+                                Text("이 사람과의 관계에서 절대 놓치면 안 되는 것들")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    
+                    Section("예시") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("🎂")
+                                Text("생일 챙기기")
+                                    .fontWeight(.medium)
+                            }
+                            Text("이 사람의 생일이 언제인지 꼭 기억해야 해요")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            
+                            Divider()
+                            
+                            HStack {
+                                Text("☕️")
+                                Text("커피 취향 기억하기")
+                                    .fontWeight(.medium)
+                            }
+                            Text("어떤 음료를 좋아하는지 알아두면 좋아요")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            
+                            Divider()
+                            
+                            HStack {
+                                Text("📞")
+                                Text("정기적으로 안부 묻기")
+                                    .fontWeight(.medium)
+                            }
+                            Text("관계 유지를 위해 주기적으로 연락하는 것")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .navigationTitle("중요 액션 추가")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("추가") {
+                        addCriticalAction()
+                        dismiss()
+                    }
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+    
+    private func addCriticalAction() {
+        do {
+            // 1. RapportAction 생성 (전역) - 사용자 액션은 phase와 관계없이 항상 접근 가능
+            let maxOrder = (try? context.fetch(FetchDescriptor<RapportAction>(
+                predicate: #Predicate { !$0.isDefault }
+            )))?.map { $0.order }.max() ?? 1000 // 사용자 액션은 1000번대부터 시작
+            
+            let newAction = RapportAction(
+                title: title,
+                actionDescription: description,
+                phase: .phase1, // 사용자 액션은 phase1에 저장하되, 실제로는 phase와 무관하게 표시됨
+                type: .critical, // 사용자가 추가하는 것들은 모두 중요한 것들
+                order: maxOrder + 1,
+                isDefault: false, // 사용자 커스텀 액션
+                isActive: true,
+                placeholder: placeholder.isEmpty ? "예: 기억해야 할 내용을 입력하세요" : placeholder
+            )
+            context.insert(newAction)
+            
+            // 2. PersonAction 생성 (이 사람용)
+            let personAction = PersonAction(
+                person: person,
+                action: newAction,
+                isVisibleInDetail: false // 기본적으로 숨김, 사용자가 눈 버튼으로 표시 설정 가능
+            )
+            context.insert(personAction)
+            
+            try context.save()
+            print("✅ 사용자 중요 액션 추가됨: \(title)")
+        } catch {
+            print("❌ 사용자 중요 액션 추가 실패: \(error)")
+        }
     }
 }
 
@@ -482,11 +628,11 @@ struct AddCustomActionSheet: View {
                 Form {
                     Section("액션 정보") {
                         TextField("제목", text: $title)
-                            .autocorrectionDisabled()
+                            .autocorrectionDisabled(true)
                         TextField("설명 (선택)", text: $description, axis: .vertical)
                             .lineLimit(2...4)
                         TextField("입력 예시 (선택)", text: $placeholder)
-                            .autocorrectionDisabled()
+                            .autocorrectionDisabled(true)
                     }
                     
                     Section("설정") {
@@ -530,32 +676,37 @@ struct AddCustomActionSheet: View {
     }
     
     private func addCustomAction() {
-        // 1. RapportAction 생성 (전역)
-        let maxOrder = (try? context.fetch(FetchDescriptor<RapportAction>(
-            predicate: #Predicate { $0.phase == phase }
-        )))?.map { $0.order }.max() ?? 0
-        
-        let newAction = RapportAction(
-            title: title,
-            actionDescription: description,
-            phase: phase,
-            type: type,
-            order: maxOrder + 1,
-            isDefault: false,
-            isActive: true,
-            placeholder: placeholder.isEmpty ? "예: 입력하세요" : placeholder
-        )
-        context.insert(newAction)
-        
-        // 2. PersonAction 생성 (이 사람용)
-        let personAction = PersonAction(
-            person: person,
-            action: newAction,
-            isVisibleInDetail: newAction.type == .critical ? false : false // 기본적으로 숨김, 사용자가 선택해서 보이게 할 수 있음
-        )
-        context.insert(personAction)
-        
-        try? context.save()
+        do {
+            // 1. RapportAction 생성 (전역)
+            let maxOrder = (try? context.fetch(FetchDescriptor<RapportAction>(
+                predicate: #Predicate { $0.phase == phase }
+            )))?.map { $0.order }.max() ?? 0
+            
+            let newAction = RapportAction(
+                title: title,
+                actionDescription: description,
+                phase: phase,
+                type: type,
+                order: maxOrder + 1,
+                isDefault: false,
+                isActive: true,
+                placeholder: placeholder.isEmpty ? "예: 입력하세요" : placeholder
+            )
+            context.insert(newAction)
+            
+            // 2. PersonAction 생성 (이 사람용)
+            let personAction = PersonAction(
+                person: person,
+                action: newAction,
+                isVisibleInDetail: newAction.type == .critical ? false : false // 기본적으로 숨김, 사용자가 선택해서 보이게 할 수 있음
+            )
+            context.insert(personAction)
+            
+            try context.save()
+            print("✅ 커스텀 액션 추가됨: \(title)")
+        } catch {
+            print("❌ 커스텀 액션 추가 실패: \(error)")
+        }
     }
 }
 
@@ -731,15 +882,23 @@ struct PersonActionRow: View {
                         if personAction.isCompleted {
                             // 완료 취소 허용 (모든 액션 타입)
                             personAction.markIncomplete()
-                            try? context.save()
+                            do {
+                                try context.save()
+                            } catch {
+                                print("❌ PersonAction 완료 취소 저장 실패: \(error)")
+                            }
                         } else {
                             // 완료 처리하면서 결과 입력 화면 띄우기
                             showingResultInput = true
                         }
                         
-                        // 관계 상태 업데이트
+                        // 관계 상태 업데이트 (안전하게)
                         if let person = personAction.person {
-                            RelationshipStateManager.shared.updatePersonRelationshipState(person, context: context)
+                            do {
+                                try RelationshipStateManager.shared.updatePersonRelationshipState(person, context: context)
+                            } catch {
+                                print("❌ 관계 상태 업데이트 실패: \(error)")
+                            }
                         }
                     }
                 } label: {
@@ -830,7 +989,11 @@ struct PersonActionRow: View {
                                 if action.type == .critical {
                                     Button {
                                         personAction.isVisibleInDetail.toggle()
-                                        try? context.save()
+                                        do {
+                                            try context.save()
+                                        } catch {
+                                            print("❌ PersonAction 가시성 변경 저장 실패: \(error)")
+                                        }
                                     } label: {
                                         Image(systemName: personAction.isVisibleInDetail ? "eye.fill" : "eye.slash")
                                             .font(.caption)
@@ -1033,12 +1196,20 @@ struct ActionResultInputSheet: View {
         personAction.context = resultText
         personAction.markCompleted()
         
-        // 관계 상태 업데이트
+        // 관계 상태 업데이트 (안전하게)
         if let person = personAction.person {
-            RelationshipStateManager.shared.updatePersonRelationshipState(person, context: context)
+            do {
+                try RelationshipStateManager.shared.updatePersonRelationshipState(person, context: context)
+            } catch {
+                print("❌ 관계 상태 업데이트 실패: \(error)")
+            }
         }
         
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            print("❌ PersonAction 완료 저장 실패: \(error)")
+        }
         dismiss()
     }
 }
@@ -1063,7 +1234,7 @@ struct ReminderSettingSheet: View {
                 
                 Section("알림 내용") {
                     TextField("제목", text: $reminderTitle)
-                        .autocorrectionDisabled()
+                        .autocorrectionDisabled(true)
                     
                     TextField("내용 (선택)", text: $reminderBody, axis: .vertical)
                         .lineLimit(2...4)
@@ -1223,7 +1394,11 @@ struct PersonActionDetailSheet: View {
                 Section {
                     Button("지금 완료 처리") {
                         personAction.markCompleted()
-                        try? context.save()
+                        do {
+                            try context.save()
+                        } catch {
+                            print("❌ PersonAction 완료 처리 저장 실패: \(error)")
+                        }
                         dismiss()
                     }
                     .disabled(personAction.isCompleted)
@@ -1234,7 +1409,11 @@ struct PersonActionDetailSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("완료") {
-                        try? context.save()
+                        do {
+                            try context.save()
+                        } catch {
+                            print("❌ PersonAction 상세 정보 저장 실패: \(error)")
+                        }
                         dismiss()
                     }
                 }

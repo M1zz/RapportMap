@@ -82,6 +82,52 @@ class DataSeeder {
         }
     }
     
+    /// 모든 기본 액션을 삭제하고 다시 생성 (데이터 문제 해결용)
+    static func resetDefaultActions(context: ModelContext) {
+        print("🔥 기본 액션들을 모두 삭제하고 다시 생성합니다...")
+        
+        do {
+            // 모든 기본 액션들 삭제
+            let allDefaultActions = try context.fetch(FetchDescriptor<RapportAction>(
+                predicate: #Predicate { $0.isDefault == true }
+            ))
+            
+            for action in allDefaultActions {
+                context.delete(action)
+            }
+            
+            try context.save()
+            print("🗑️ 기존 기본 액션 \(allDefaultActions.count)개 삭제 완료")
+            
+            // 새로운 기본 액션 30개 생성
+            let defaultActions = RapportAction.createDefaultActions()
+            for action in defaultActions {
+                context.insert(action)
+            }
+            
+            try context.save()
+            print("✅ 새로운 기본 액션 30개 생성 완료")
+            
+            // 모든 Person들의 액션도 다시 생성
+            let allPeople = try context.fetch(FetchDescriptor<Person>())
+            for person in allPeople {
+                // 기존 PersonAction들 삭제
+                for personAction in person.actions {
+                    context.delete(personAction)
+                }
+                
+                // 새로운 PersonAction들 생성
+                createPersonActionsForNewPerson(person: person, context: context)
+            }
+            
+            try context.save()
+            print("✅ 모든 사람들의 액션도 다시 생성 완료")
+            
+        } catch {
+            print("❌ 기본 액션 리셋 실패: \(error)")
+        }
+    }
+    
     /// 기본 액션이 없으면 30개를 생성
     static func seedDefaultActionsIfNeeded(context: ModelContext) {
         let descriptor = FetchDescriptor<RapportAction>(
@@ -91,23 +137,33 @@ class DataSeeder {
         do {
             let existingActions = try context.fetch(descriptor)
             
-            // 이미 기본 액션들이 있으면 스킵
-            if !existingActions.isEmpty {
-                print("✅ 기본 액션들이 이미 존재합니다 (\(existingActions.count)개)")
+            // 기본 액션이 30개 미만이거나 "개인적 맥락 파악" 단계 액션이 없으면 리셋
+            let phase3Actions = existingActions.filter { $0.phase == .phase3 }
+            
+            if existingActions.count < 30 || phase3Actions.isEmpty {
+                print("⚠️ 기본 액션이 불완전합니다 (현재: \(existingActions.count)개, Phase3: \(phase3Actions.count)개)")
+                print("🔄 기본 액션을 다시 생성합니다...")
+                
+                // 모든 기존 기본 액션 삭제
+                for action in existingActions {
+                    context.delete(action)
+                }
+                
+                // 새로운 기본 액션 30개 생성
+                let defaultActions = RapportAction.createDefaultActions()
+                for action in defaultActions {
+                    context.insert(action)
+                }
+                
+                try context.save()
+                print("✅ 기본 액션 30개를 새로 생성했습니다")
                 return
             }
             
-            // 기본 액션 30개 생성
-            let defaultActions = RapportAction.createDefaultActions()
-            for action in defaultActions {
-                context.insert(action)
-            }
-            
-            try context.save()
-            print("✅ 기본 액션 30개를 생성했습니다")
+            print("✅ 기본 액션들이 완전히 존재합니다 (\(existingActions.count)개)")
             
         } catch {
-            print("❌ 기본 액션 생성 실패: \(error)")
+            print("❌ 기본 액션 확인/생성 실패: \(error)")
         }
     }
     

@@ -18,6 +18,31 @@ enum ActionPhase: String, Codable, CaseIterable, Identifiable {
     
     var id: String { rawValue }
     
+    // Custom decoder to handle legacy Korean values
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        
+        switch rawValue {
+        case "첫 만남":
+            self = .phase1
+        case "관계 설정":
+            self = .phase2
+        case "개인적 맥락 파악":
+            self = .phase3
+        case "신뢰 쌓기":
+            self = .phase4
+        case "관계 깊어지기", "깊이 더하기": // Handle legacy value
+            self = .phase5
+        case "장기 관계":
+            self = .phase6
+        default:
+            // Try to handle any other legacy values by defaulting to phase1
+            print("⚠️ Unknown ActionPhase value: \(rawValue), defaulting to phase1")
+            self = .phase1
+        }
+    }
+    
     var emoji: String {
         switch self {
         case .phase1: return "👋"

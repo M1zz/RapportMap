@@ -42,9 +42,9 @@ class RelationshipStateManager {
     }
     
     /// 특정 사람의 관계 상태 업데이트
-    func updatePersonRelationshipState(_ person: Person, context: ModelContext) {
+    func updatePersonRelationshipState(_ person: Person, context: ModelContext) throws {
         person.updateRelationshipState()
-        try? context.save()
+        try context.save()
     }
     
     /// 소홀한 관계들 찾기
