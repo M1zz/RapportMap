@@ -15,7 +15,15 @@ struct RapportMapApp: App {
         WindowGroup {
             AppRootView()
         }
-        .modelContainer(for: [Person.self, RapportEvent.self, RapportAction.self, PersonAction.self, MeetingRecord.self])
+        .modelContainer(for: [
+            Person.self, 
+            RapportEvent.self, 
+            RapportAction.self, 
+            PersonAction.self, 
+            MeetingRecord.self,
+            PersonContext.self,  // 추가!
+            InteractionRecord.self  // 혹시 빠졌다면 추가
+        ])
     }
 }
 
@@ -86,13 +94,16 @@ struct AppRootView: View {
     
     private func loadAppState() {
         Task { @MainActor in
-            // ActionType 마이그레이션 수행 (한번만)
+            // 1. ActionType 마이그레이션 수행 (한번만)
             DataSeeder.migrateKoreanActionTypes(context: context)
             
-            // 기본 액션이 없으면 생성
+            // 2. 기본 액션이 없으면 생성
             DataSeeder.seedDefaultActionsIfNeeded(context: context)
             
-            // 선택된 Person이 있는지 확인하고 찾기
+            // 3. PersonContext 마이그레이션 (한번만) - 새로 추가!
+            DataSeeder.migratePersonStringFieldsToContexts(context: context)
+            
+            // 4. 선택된 Person이 있는지 확인하고 찾기
             if let person = appStateManager.findSelectedPerson(in: context) {
                 print("✅ 이전 상태 복원: \(person.name)님의 PersonDetailView")
             } else {

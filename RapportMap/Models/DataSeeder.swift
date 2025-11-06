@@ -138,7 +138,7 @@ class DataSeeder {
             let existingActions = try context.fetch(descriptor)
             
             // 기본 액션이 30개 미만이거나 "개인적 맥락 파악" 단계 액션이 없으면 리셋
-            let phase3Actions = existingActions.filter { $0.phase == .phase3 }
+            let phase3Actions = existingActions.filter { $0.phase == .personal }
             
             if existingActions.count < 30 || phase3Actions.isEmpty {
                 print("⚠️ 기본 액션이 불완전합니다 (현재: \(existingActions.count)개, Phase3: \(phase3Actions.count)개)")
@@ -212,8 +212,11 @@ class DataSeeder {
                 }
             }
             
+            // PersonContext 기본 템플릿도 생성
+            PersonContext.createDefaultContextsForPerson(person: person, context: context)
+            
             try context.save()
-            print("✅ \(person.name)님의 액션 \(allActions.count)개를 생성했습니다")
+            print("✅ \(person.name)님의 액션 \(allActions.count)개와 컨텍스트 템플릿을 생성했습니다")
             
         } catch {
             print("❌ Person 액션 생성 실패: \(error)")
@@ -228,6 +231,35 @@ class DataSeeder {
             } catch {
                 print("❌ 재시도도 실패: \(error)")
             }
+        }
+    }
+    
+    /// 기존 Person들의 String 필드를 PersonContext로 마이그레이션
+    static func migratePersonStringFieldsToContexts(context: ModelContext) {
+        let migrationKey = "PersonContextMigrationCompleted"
+        if UserDefaults.standard.bool(forKey: migrationKey) {
+            print("✅ PersonContext 마이그레이션이 이미 완료되었습니다")
+            return
+        }
+        
+        print("🔄 PersonContext 마이그레이션 시작...")
+        
+        do {
+            let allPeople = try context.fetch(FetchDescriptor<Person>())
+            var migrationCount = 0
+            
+            for person in allPeople {
+                person.migrateStringFieldsToContexts(modelContext: context)
+                migrationCount += 1
+            }
+            
+            try context.save()
+            
+            UserDefaults.standard.set(true, forKey: migrationKey)
+            print("✅ PersonContext 마이그레이션 완료: \(migrationCount)명 처리됨")
+            
+        } catch {
+            print("❌ PersonContext 마이그레이션 실패: \(error)")
         }
     }
 }

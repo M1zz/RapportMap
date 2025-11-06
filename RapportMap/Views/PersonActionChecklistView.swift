@@ -140,8 +140,8 @@ struct PersonActionChecklistView: View {
                         )
                     }
                     
-                    // 사용자 추가 액션 버튼 (관계유지 다음에)
-                    if ActionPhase.allCases.last == .phase6 {
+                    // 사용자 추가 액션 버튼 (마지막 phase 다음에)
+                    if ActionPhase.allCases.last == .intimate {
                         UserActionsButton(
                             isSelected: showingUserActions,
                             userActionCount: getUserActionCount()
@@ -577,7 +577,7 @@ struct AddCriticalActionSheet: View {
             let newAction = RapportAction(
                 title: title,
                 actionDescription: description,
-                phase: .phase1, // 사용자 액션은 phase1에 저장하되, 실제로는 phase와 무관하게 표시됨
+                phase: .surface, // 사용자 액션은 surface에 저장하되, 실제로는 phase와 무관하게 표시됨
                 type: .critical, // 사용자가 추가하는 것들은 모두 중요한 것들
                 order: maxOrder + 1,
                 isDefault: false, // 사용자 커스텀 액션

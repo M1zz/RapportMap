@@ -11,7 +11,7 @@ import SwiftData
 struct ActionManagementView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \RapportAction.order) private var allActions: [RapportAction]
-    @State private var selectedPhase: ActionPhase = .phase1
+    @State private var selectedPhase: ActionPhase = .surface
     @State private var showingAddAction = false
     
     private var actionsForSelectedPhase: [RapportAction] {
