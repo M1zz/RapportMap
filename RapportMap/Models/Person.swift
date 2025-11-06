@@ -12,35 +12,28 @@ final class Person {
     var contact: String                 // 연락처 (전화번호, 이메일 등)
     var state: RelationshipState        // 현재 관계 상태 (멀어짐/따뜻해지는중/끈끈함)
     
-    // MARK: - 상호작용 기록 (기존 호환성)
-    var lastMentoring: Date?            // 마지막 멘토링 날짜
-    var lastMeal: Date?                 // 마지막 식사 날짜
-    var lastQuestion: String?           // 마지막으로 받은 질문
-    var unansweredCount: Int            // 미답변 질문 수
-    var lastContact: Date?              // 마지막 연락 날짜
+    // MARK: - 상호작용 기록 (기존 호환성 - 자동 계산됨)
+    var lastMentoring: Date?            // 마지막 멘토링 날짜 (InteractionRecord에서 자동 계산)
+    var lastMeal: Date?                 // 마지막 식사 날짜 (InteractionRecord에서 자동 계산)
+    var lastContact: Date?              // 마지막 연락 날짜 (InteractionRecord에서 자동 계산)
     var isNeglected: Bool               // 소홀함 플래그 (자동 계산됨)
     
     // MARK: - 관계 진행 단계
     var currentPhase: ActionPhase       // 현재 관계 단계 (표면적/개인적/깊이있는 등)
     var relationshipStartDate: Date     // 관계 시작일
     
-    // MARK: - 개인 컨텍스트 (외장 두뇌 역할)
-    var preferredName: String           // 선호 호칭 (예: "철수", "김 대리")
-    var interests: String               // 관심사 (예: "등산, 게임 개발")
-    var preferences: String             // 취향/선호 (예: "커피 안 마심, 매운 거 못 먹음")
-    var importantDates: String          // 중요한 날짜들 (예: "생일 5/15, 발표 11/20")
-    var workStyle: String               // 업무 스타일 (예: "문서 선호, 대면 미팅 싫어함")
-    var background: String              // 배경 정보 (예: "서울 출신, 전 직장 네이버")
+    // MARK: - 개인 컨텍스트 (외장 두뇌 역할 - PersonContext로 마이그레이션됨)
+    var preferredName: String           // 선호 호칭 (PersonContext로 마이그레이션 예정)
+    var interests: String               // 관심사 (PersonContext로 마이그레이션 예정)
+    var preferences: String             // 취향/선호 (PersonContext로 마이그레이션 예정)
+    var importantDates: String          // 중요한 날짜들 (PersonContext로 마이그레이션 예정)
+    var workStyle: String               // 업무 스타일 (PersonContext로 마이그레이션 예정)
+    var background: String              // 배경 정보 (PersonContext로 마이그레이션 예정)
     
-    // MARK: - 상호작용별 노트
-    var mentoringNotes: String?         // 멘토링 관련 메모
-    var mealNotes: String?              // 식사 관련 메모
-    var contactNotes: String?           // 연락 관련 메모
-    
-    // MARK: - 대화 컨텍스트
-    var recentConcerns: String?         // 최근의 고민
-    var receivedQuestions: String?      // 받았던 질문들
-    var unresolvedPromises: String?     // 미해결된 약속들
+    // MARK: - 상호작용별 노트 (InteractionRecord로 마이그레이션됨)
+    var mentoringNotes: String?         // 멘토링 관련 메모 (InteractionRecord로 마이그레이션 예정)
+    var mealNotes: String?              // 식사 관련 메모 (InteractionRecord로 마이그레이션 예정)
+    var contactNotes: String?           // 연락 관련 메모 (InteractionRecord로 마이그레이션 예정)
     
     // MARK: - 관계형 데이터 (SwiftData Relationships)
     
@@ -63,6 +56,11 @@ final class Person {
     /// cascade 삭제: 사람이 삭제되면 관련 컨텍스트들도 모두 삭제됨
     @Relationship(deleteRule: .cascade, inverse: \PersonContext.person)
     var contexts: [PersonContext] = []
+    
+    /// 이 사람과의 대화/상태 기록들 (질문, 고민, 약속 등)
+    /// cascade 삭제: 사람이 삭제되면 관련 대화 기록들도 모두 삭제됨
+    @Relationship(deleteRule: .cascade, inverse: \ConversationRecord.person)
+    var conversationRecords: [ConversationRecord] = []
     // MARK: - 초기화
     /// Person 객체 생성자
     /// - Parameters:
@@ -72,7 +70,7 @@ final class Person {
     ///   - state: 관계 상태 (기본값: .distant)
     ///   - currentPhase: 현재 관계 단계 (기본값: .surface)
     ///   - relationshipStartDate: 관계 시작일 (기본값: 현재 날짜)
-    ///   - 기타 모든 개인 정보 필드들 (기본값: 빈 문자열 또는 nil)
+    ///   - 기타 레거시 필드들 (호환성을 위해 유지, 점진적으로 제거 예정)
     init(
         id: UUID = UUID(),
         name: String,
@@ -80,11 +78,9 @@ final class Person {
         state: RelationshipState = .distant,
         lastMentoring: Date? = nil,
         lastMeal: Date? = nil,
-        lastQuestion: String? = nil,
-        unansweredCount: Int = 0,
         lastContact: Date? = nil,
         isNeglected: Bool = false,
-        currentPhase: ActionPhase = .surface,  // 기본값: 표면적 관계 단계
+        currentPhase: ActionPhase = .surface,
         relationshipStartDate: Date = Date(),
         preferredName: String = "",
         interests: String = "",
@@ -94,36 +90,36 @@ final class Person {
         background: String = "",
         mentoringNotes: String? = nil,
         mealNotes: String? = nil,
-        contactNotes: String? = nil,
-        recentConcerns: String? = nil,
-        receivedQuestions: String? = nil,
-        unresolvedPromises: String? = nil
+        contactNotes: String? = nil
     ) {
-        // 모든 프로퍼티를 초기화
+        // 기본 정보 초기화
         self.id = id
         self.name = name
         self.contact = contact
         self.state = state
+        
+        // 상호작용 기록 (호환성)
         self.lastMentoring = lastMentoring
         self.lastMeal = lastMeal
-        self.lastQuestion = lastQuestion
-        self.unansweredCount = unansweredCount
         self.lastContact = lastContact
         self.isNeglected = isNeglected
+        
+        // 관계 진행 정보
         self.currentPhase = currentPhase
         self.relationshipStartDate = relationshipStartDate
+        
+        // 개인 컨텍스트 (레거시 필드 - 마이그레이션 예정)
         self.preferredName = preferredName
         self.interests = interests
         self.preferences = preferences
         self.importantDates = importantDates
         self.workStyle = workStyle
         self.background = background
+        
+        // 상호작용 노트 (레거시 필드 - 마이그레이션 예정)
         self.mentoringNotes = mentoringNotes
         self.mealNotes = mealNotes
         self.contactNotes = contactNotes
-        self.recentConcerns = recentConcerns
-        self.receivedQuestions = receivedQuestions
-        self.unresolvedPromises = unresolvedPromises
     }
 }
 
@@ -216,8 +212,9 @@ extension Person {
         let interactionScore = calculateInteractionFrequencyScore()
         totalScore += interactionScore
         
-        // 4. 미해결 대화 감점: 답하지 않은 질문이나 약속 (최대 -12점)
-        let unsolvedPenalty = min(Double(unansweredCount) * 2.5, 12)
+        // 4. 새로운 대화 기록 시스템의 미해결 대화 감점 (최대 -12점)
+        let unresolvedConversations = getUnresolvedConversationRecords().count
+        let unsolvedPenalty = min(Double(unresolvedConversations) * 2.0, 12)
         totalScore -= unsolvedPenalty
         
         // 5. 소홀함 플래그 감점: 시스템이 판단한 관계 소홀 (-8점)
@@ -471,6 +468,141 @@ extension Person {
         return interactionRecords.sorted { $0.date > $1.date }
     }
     
+    // MARK: - 대화/상태 기록 관리 메서드들
+    
+    /// 새로운 대화/상태 기록 추가
+    /// 질문, 고민, 약속 등의 대화 내용을 구조화하여 저장
+    /// - Parameters:
+    ///   - type: 대화 타입 (질문, 고민, 약속 등)
+    ///   - content: 대화 내용
+    ///   - notes: 추가 메모
+    ///   - priority: 우선순위 (기본값: normal)
+    ///   - tags: 태그들 (기본값: 빈 배열)
+    ///   - date: 기록 날짜 (기본값: 현재 시간)
+    /// - Returns: 생성된 ConversationRecord 객체
+    func addConversationRecord(
+        type: ConversationType,
+        content: String,
+        notes: String? = nil,
+        priority: ConversationPriority = .normal,
+        tags: [String] = [],
+        date: Date = Date()
+    ) -> ConversationRecord {
+        let record = ConversationRecord(
+            date: date,
+            type: type,
+            content: content,
+            notes: notes,
+            priority: priority,
+            tags: tags
+        )
+        record.person = self
+        conversationRecords.append(record)
+        
+        // 기존 필드들도 호환성을 위해 업데이트
+        updateLegacyConversationFields(from: record)
+        
+        return record
+    }
+    
+    /// 기존 레거시 필드들 업데이트 (호환성 유지)
+    /// 새로운 대화 기록이 추가될 때 기존 String 필드들도 함께 업데이트
+    /// 점진적으로 제거 예정 - 현재는 호환성을 위해서만 유지
+    /// - Parameter record: 새로 추가된 대화 기록
+    private func updateLegacyConversationFields(from record: ConversationRecord) {
+        // 더 이상 사용하지 않는 레거시 필드 업데이트는 제거됨
+        // ConversationRecord 시스템으로 완전 전환
+        
+        // 향후 이 메서드 자체도 제거될 예정
+        print("🔄 [Legacy] 대화 기록이 새로운 시스템에 추가됨: \(record.type.title)")
+    }
+    
+    /// 대화 기록을 해결됨으로 표시
+    /// 질문에 답변했거나 약속을 이행했을 때 호출
+    /// - Parameter record: 해결할 대화 기록
+    func resolveConversationRecord(_ record: ConversationRecord) {
+        record.isResolved = true
+        print("✅ [Conversation] \(record.type.title) 해결됨: \(record.content)")
+    }
+    
+    /// 특정 타입의 대화 기록들을 날짜 역순으로 반환
+    /// - Parameter type: 조회할 대화 타입
+    /// - Returns: 해당 타입의 대화 기록들 (최신순)
+    func getConversationRecords(ofType type: ConversationType) -> [ConversationRecord] {
+        return conversationRecords
+            .filter { $0.type == type }
+            .sorted { $0.date > $1.date }
+    }
+    
+    /// 모든 대화 기록을 날짜 역순으로 정렬하여 반환
+    /// - Returns: 모든 대화 기록들 (최신순)
+    func getAllConversationRecordsSorted() -> [ConversationRecord] {
+        return conversationRecords.sorted { $0.date > $1.date }
+    }
+    
+    /// 미해결된 대화 기록들만 반환
+    /// 답변하지 않은 질문이나 이행하지 않은 약속들을 조회할 때 사용
+    /// - Returns: 미해결 대화 기록들 (우선순위 및 날짜순)
+    func getUnresolvedConversationRecords() -> [ConversationRecord] {
+        return conversationRecords
+            .filter { !$0.isResolved }
+            .sorted { record1, record2 in
+                // 우선순위가 높은 것부터, 같으면 날짜가 오래된 것부터
+                if record1.priority.sortOrder != record2.priority.sortOrder {
+                    return record1.priority.sortOrder > record2.priority.sortOrder
+                }
+                return record1.date < record2.date
+            }
+    }
+    
+    /// 높은 우선순위의 미해결 대화 기록들 반환
+    /// - Returns: 긴급/높음 우선순위의 미해결 기록들
+    func getHighPriorityUnresolvedConversations() -> [ConversationRecord] {
+        return getUnresolvedConversationRecords()
+            .filter { $0.priority == .urgent || $0.priority == .high }
+    }
+    
+    /// 최근 대화 기록들 반환 (7일 이내)
+    /// - Returns: 최근 1주일 내의 대화 기록들
+    func getRecentConversationRecords() -> [ConversationRecord] {
+        return conversationRecords
+            .filter { $0.isRecent }
+            .sorted { $0.date > $1.date }
+    }
+    
+    /// 특정 태그를 포함한 대화 기록들 반환
+    /// - Parameter tag: 검색할 태그
+    /// - Returns: 해당 태그가 포함된 대화 기록들
+    func getConversationRecords(withTag tag: String) -> [ConversationRecord] {
+        return conversationRecords
+            .filter { $0.tags.contains(tag) }
+            .sorted { $0.date > $1.date }
+    }
+    
+    /// 대화 기록 통계 정보 반환
+    /// - Returns: 대화 기록 통계를 담은 딕셔너리
+    func getConversationStatistics() -> [String: Int] {
+        let total = conversationRecords.count
+        let resolved = conversationRecords.filter { $0.isResolved }.count
+        let unresolved = total - resolved
+        let questions = conversationRecords.filter { $0.type == .question }.count
+        let concerns = conversationRecords.filter { $0.type == .concern }.count
+        let promises = conversationRecords.filter { $0.type == .promise }.count
+        let recent = conversationRecords.filter { $0.isRecent }.count
+        let highPriority = conversationRecords.filter { $0.priority == .urgent || $0.priority == .high }.count
+        
+        return [
+            "총 기록": total,
+            "해결됨": resolved,
+            "미해결": unresolved,
+            "질문": questions,
+            "고민": concerns,
+            "약속": promises,
+            "최근 기록": recent,
+            "높은 우선순위": highPriority
+        ]
+    }
+    
     /// 전체 액션의 완료율 계산 (내부 헬퍼 메서드)
     /// - Returns: 0.0-1.0 사이의 완료율
     private func calculateActionCompletionRate() -> Double {
@@ -516,9 +648,16 @@ extension Person {
             recommendations.append("⚠️ 중요한 액션 \(incompleteCritical)개가 미완료입니다")
         }
         
-        // 3. 미해결 대화 추천
-        if unansweredCount > 2 {
-            recommendations.append("💬 미해결 대화가 많아요. 답변을 해보세요")
+        // 3. 새로운 대화 시스템 기반 추천
+        let unresolvedConversations = getUnresolvedConversationRecords()
+        if unresolvedConversations.count > 2 {
+            recommendations.append("💬 미해결 대화가 \(unresolvedConversations.count)개 있어요. 답변해보세요")
+        }
+        
+        // 높은 우선순위 대화가 있는 경우
+        let highPriorityCount = getHighPriorityUnresolvedConversations().count
+        if highPriorityCount > 0 {
+            recommendations.append("🚨 긴급/중요한 대화 \(highPriorityCount)개를 확인해보세요")
         }
         
         // 4. 식사/만남 추천
@@ -721,7 +860,109 @@ extension Person {
         let preferredNameContext = getPreferences().first { $0.label == "선호 호칭" }
         return preferredNameContext?.value.isEmpty == false ? preferredNameContext!.value : name
     }
+    
+    // MARK: - 대화/상태 관련 편의 프로퍼티들
+    
+    /// 미해결 질문 수 (새로운 방식으로 계산)
+    var currentUnansweredCount: Int {
+        return conversationRecords
+            .filter { $0.type == .question && !$0.isResolved }
+            .count
+    }
+    
+    /// 최근 받은 질문 (최신 1개)
+    var latestQuestion: String? {
+        return conversationRecords
+            .filter { $0.type == .question }
+            .sorted { $0.date > $1.date }
+            .first?.content
+    }
+    
+    /// 최근 고민사항들 (해결되지 않은 것들)
+    var currentConcerns: [String] {
+        return conversationRecords
+            .filter { $0.type == .concern && !$0.isResolved }
+            .sorted { $0.date > $1.date }
+            .map { $0.content }
+    }
+    
+    /// 미해결 약속들
+    var currentUnresolvedPromises: [String] {
+        return conversationRecords
+            .filter { $0.type == .promise && !$0.isResolved }
+            .sorted { $0.date > $1.date }
+            .map { $0.content }
+    }
+    
+    /// 최근 받은 질문들 (모든 요청 타입 포함)
+    var allReceivedQuestions: [String] {
+        return conversationRecords
+            .filter { $0.type == .question || $0.type == .request }
+            .sorted { $0.date > $1.date }
+            .map { $0.content }
+    }
+    
+    /// 대화 기록이 있는지 확인
+    var hasConversationRecords: Bool {
+        return !conversationRecords.isEmpty
+    }
+    
+    /// 미해결 대화가 있는지 확인
+    var hasUnresolvedConversations: Bool {
+        return conversationRecords.contains { !$0.isResolved }
+    }
+    
+    /// 높은 우선순위 미해결 대화가 있는지 확인
+    var hasHighPriorityUnresolvedConversations: Bool {
+        return conversationRecords.contains { 
+            !$0.isResolved && ($0.priority == .urgent || $0.priority == .high)
+        }
+    }
+    
+    /// 대화 기록 요약 텍스트
+    var conversationSummary: String {
+        let total = conversationRecords.count
+        let unresolved = getUnresolvedConversationRecords().count
+        
+        if total == 0 {
+            return "대화 기록 없음"
+        } else if unresolved == 0 {
+            return "총 \(total)개 기록 (모두 해결됨)"
+        } else {
+            return "총 \(total)개 기록 (\(unresolved)개 미해결)"
+        }
+    }
+    
+    // MARK: - 레거시 호환 프로퍼티들 (자동 계산됨)
+    
+    /// 레거시 호환: 미답변 질문 수 (currentUnansweredCount로 대체됨)
+    var unansweredCount: Int {
+        return currentUnansweredCount
+    }
+    
+    /// 레거시 호환: 마지막 질문 (latestQuestion으로 대체됨)
+    var lastQuestion: String? {
+        return latestQuestion
+    }
+    
+    /// 레거시 호환: 최근 고민 (currentConcerns의 첫 번째 항목)
+    var recentConcerns: String? {
+        return currentConcerns.first
+    }
+    
+    /// 레거시 호환: 받은 질문들 (allReceivedQuestions의 요약)
+    var receivedQuestions: String? {
+        let questions = allReceivedQuestions.prefix(3)
+        return questions.isEmpty ? nil : questions.joined(separator: "; ")
+    }
+    
+    /// 레거시 호환: 미해결 약속들 (currentUnresolvedPromises의 요약)
+    var unresolvedPromises: String? {
+        let promises = currentUnresolvedPromises.prefix(3)
+        return promises.isEmpty ? nil : promises.joined(separator: "; ")
+    }
 }
+
 
 /// 관계 분석 결과를 담는 구조체
 /// 관계 상태의 상세한 분석 정보와 개선 제안사항들을 포함

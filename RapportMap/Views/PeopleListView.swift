@@ -222,8 +222,6 @@ struct PeopleListView: View {
             let lastMentoring = randomPastDate(maxDays: 60)
             let lastMeal = randomPastDate(maxDays: 90)
             let lastContact = randomPastDate(maxDays: 120)
-            let lastQuestion = randomQuestion()
-            let unansweredCount = Int.random(in: 0...5)
             // 소홀 여부는 마지막 접촉일이 오래됐거나 상태가 distant일 때 높게
             let neglectedBias = (state == .distant ? 2 : 0) + ((lastContact == nil || (lastContact! < now.addingTimeInterval(-45 * day))) ? 2 : 0)
             let isNeglected = Int.random(in: 0...4) < neglectedBias
@@ -235,12 +233,53 @@ struct PeopleListView: View {
                 state: state,
                 lastMentoring: lastMentoring,
                 lastMeal: lastMeal,
-                lastQuestion: lastQuestion,
-                unansweredCount: unansweredCount,
                 lastContact: lastContact,
                 isNeglected: isNeglected
             )
             context.insert(p)
+            
+            // 샘플 대화 기록 추가 (읽기 전용 프로퍼티들을 대체)
+            if let question = randomQuestion() {
+                let _ = p.addConversationRecord(
+                    type: .question,
+                    content: question,
+                    priority: .normal,
+                    date: Date().addingTimeInterval(-TimeInterval.random(in: 0...604800)) // 최근 1주일 내
+                )
+            }
+            
+            // 미답변 질문들 추가
+            let questionCount = Int.random(in: 0...3)
+            for i in 0..<questionCount {
+                let _ = p.addConversationRecord(
+                    type: .question,
+                    content: questionPool.randomElement() ?? "질문 \(i+1)",
+                    priority: .normal,
+                    date: Date().addingTimeInterval(-TimeInterval.random(in: 0...1209600)) // 최근 2주일 내
+                )
+            }
+            
+            // 고민사항 추가 (30% 확률)
+            if Int.random(in: 0...9) < 3 {
+                let concerns = ["새 프로젝트 고민", "이직 고려 중", "건강 관리", "인간관계 스트레스"]
+                let _ = p.addConversationRecord(
+                    type: .concern,
+                    content: concerns.randomElement() ?? "개인적인 고민",
+                    priority: .normal,
+                    date: Date().addingTimeInterval(-TimeInterval.random(in: 0...2592000)) // 최근 1달 내
+                )
+            }
+            
+            // 약속사항 추가 (20% 확률)
+            if Int.random(in: 0...9) < 2 {
+                let promises = ["추천 서적 알려주기", "맛집 정보 공유", "인맥 소개해주기", "프로젝트 도움주기"]
+                let _ = p.addConversationRecord(
+                    type: .promise,
+                    content: promises.randomElement() ?? "약속한 일",
+                    priority: .high,
+                    date: Date().addingTimeInterval(-TimeInterval.random(in: 0...1209600)) // 최근 2주일 내
+                )
+            }
         }
 
         try? context.save()
@@ -411,9 +450,9 @@ struct PersonCard: View {
         }
         
         // 미해결 대화
-        if person.unansweredCount > 0 {
+        if person.currentUnansweredCount > 0 {
             items.append(AnyView(
-                Chip(text: "미해결 \(person.unansweredCount)")
+                Chip(text: "미해결 \(person.currentUnansweredCount)")
                     .foregroundStyle(.orange)
             ))
         }
@@ -427,21 +466,21 @@ struct PersonCard: View {
         }
         
         // 고민과 약속
-        if let concerns = person.recentConcerns, !concerns.isEmpty {
+        if !person.currentConcerns.isEmpty {
             items.append(AnyView(
                 Chip(text: "🧠 고민")
                     .foregroundStyle(.purple)
             ))
         }
         
-        if let promises = person.unresolvedPromises, !promises.isEmpty {
+        if !person.currentUnresolvedPromises.isEmpty {
             items.append(AnyView(
                 Chip(text: "🤝 약속")
                     .foregroundStyle(.red)
             ))
         }
         
-        if let receivedQuestions = person.receivedQuestions, !receivedQuestions.isEmpty {
+        if !person.allReceivedQuestions.isEmpty {
             items.append(AnyView(
                 Chip(text: "❓ 질문받음")
                     .foregroundStyle(.blue)
@@ -540,10 +579,11 @@ struct QuickRecordSheet: View {
     
     init(person: Person) {
         self.person = person
-        self._recentConcerns = State(initialValue: person.recentConcerns ?? "")
-        self._receivedQuestions = State(initialValue: person.receivedQuestions ?? "")
-        self._unresolvedPromises = State(initialValue: person.unresolvedPromises ?? "")
-        self._unansweredCount = State(initialValue: person.unansweredCount)
+        
+        self._recentConcerns = State(initialValue: person.currentConcerns.first ?? "")
+        self._receivedQuestions = State(initialValue: person.allReceivedQuestions.first ?? "")
+        self._unresolvedPromises = State(initialValue: person.currentUnresolvedPromises.first ?? "")
+        self._unansweredCount = State(initialValue: person.currentUnansweredCount)
         self._isNeglected = State(initialValue: person.isNeglected)
         self._lastContact = State(initialValue: person.lastContact)
         self._hasContactDate = State(initialValue: person.lastContact != nil)
@@ -692,13 +732,45 @@ struct QuickRecordSheet: View {
     }
     
     private func saveRecord() {
-        // 텍스트 필드 내용 저장
-        person.recentConcerns = recentConcerns.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : recentConcerns.trimmingCharacters(in: .whitespacesAndNewlines)
-        person.receivedQuestions = receivedQuestions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : receivedQuestions.trimmingCharacters(in: .whitespacesAndNewlines)
-        person.unresolvedPromises = unresolvedPromises.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : unresolvedPromises.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 새로운 대화 기록 시스템을 사용하여 저장
         
-        // 숫자/불린 값들 저장
-        person.unansweredCount = unansweredCount
+        // 고민사항 저장
+        let trimmedConcerns = recentConcerns.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedConcerns.isEmpty {
+            let _ = person.addConversationRecord(
+                type: .concern,
+                content: trimmedConcerns,
+                priority: .normal,
+                date: Date()
+            )
+            context.insert(person.conversationRecords.last!)
+        }
+        
+        // 받은 질문 저장
+        let trimmedQuestions = receivedQuestions.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedQuestions.isEmpty {
+            let _ = person.addConversationRecord(
+                type: .question,
+                content: trimmedQuestions,
+                priority: .normal,
+                date: Date()
+            )
+            context.insert(person.conversationRecords.last!)
+        }
+        
+        // 미해결 약속 저장
+        let trimmedPromises = unresolvedPromises.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedPromises.isEmpty {
+            let _ = person.addConversationRecord(
+                type: .promise,
+                content: trimmedPromises,
+                priority: .high,
+                date: Date()
+            )
+            context.insert(person.conversationRecords.last!)
+        }
+        
+        // 소홀함 플래그 저장
         person.isNeglected = isNeglected
         
         // 연락 날짜 저장
@@ -763,13 +835,16 @@ private func relative(_ date: Date) -> String {
 struct PersonDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
-    @State private var isEditing = false
-    @State private var showDeleteConfirm = false
     @State private var showingVoiceRecorder = false
     @State private var showingAddCriticalAction = false
     @State private var showingInteractionEdit = false
     @State private var selectedInteractionType: InteractionType?
     @State private var isMeetingRecordsExpanded = true
+    
+    // 대화/상태 입력을 위한 State 변수들
+    @State private var newConcern = ""
+    @State private var newQuestion = ""
+    @State private var newPromise = ""
 
     @Bindable var person: Person
 
@@ -800,16 +875,9 @@ struct PersonDetailView: View {
             
             // 기본 정보
             basicInfoSection
-            
-      
-            // 삭제 섹션 (편집 모드일 때만)
-            deleteSection
         }
         .navigationTitle(person.name)
         .toolbar { toolbarContent }
-        .confirmationDialog("정말 삭제할까요?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-            deleteConfirmationButtons
-        }
         .sheet(isPresented: $showingVoiceRecorder) {
             VoiceRecorderView(person: person)
         }
@@ -1024,15 +1092,8 @@ struct PersonDetailView: View {
     @ViewBuilder
     private var basicInfoSection: some View {
         Section("기본 정보") {
-            if isEditing {
-                TextField("이름", text: $person.name)
-                TextField("연락처", text: $person.contact)
-            } else {
-                Text("이름: \(person.name)")
-                if !person.contact.isEmpty {
-                    Text("연락처: \(person.contact)")
-                }
-            }
+            TextField("이름", text: $person.name)
+            TextField("연락처", text: $person.contact)
         }
     }
     
@@ -1051,131 +1112,124 @@ struct PersonDetailView: View {
     @ViewBuilder
     private var conversationStateSection: some View {
         Section("대화/상태") {
-            if isEditing {
-                conversationEditingView
-            } else {
-                conversationDisplayView
+            // 현재 미해결 대화 수 표시
+            HStack {
+                Text("미해결 대화:")
+                Spacer()
+                Text("\(person.currentUnansweredCount)개")
+                    .foregroundStyle(.secondary)
             }
-        }
-    }
-    
-    @ViewBuilder
-    private var conversationEditingView: some View {
-        Stepper(value: $person.unansweredCount, in: 0...100) {
-            Text("미해결 대화: \(person.unansweredCount)")
-        }
-        Toggle("관계가 소홀함", isOn: $person.isNeglected)
-        
-        EditableConversationField(
-            title: "최근의 고민",
-            placeholder: "이 사람이 최근에 고민하고 있는 것은?",
-            text: Binding(
-                get: { person.recentConcerns ?? "" },
-                set: { person.recentConcerns = $0.isEmpty ? nil : $0 }
-            )
-        )
-        
-        EditableConversationField(
-            title: "받았던 질문",
-            placeholder: "이 사람에게 받은 질문이나 요청사항은?",
-            text: Binding(
-                get: { person.receivedQuestions ?? "" },
-                set: { person.receivedQuestions = $0.isEmpty ? nil : $0 }
-            )
-        )
-        
-        EditableConversationField(
-            title: "미해결된 약속",
-            placeholder: "아직 지키지 못한 약속이나 해야 할 일은?",
-            text: Binding(
-                get: { person.unresolvedPromises ?? "" },
-                set: { person.unresolvedPromises = $0.isEmpty ? nil : $0 }
-            )
-        )
-    }
-    
-    @ViewBuilder
-    private var conversationDisplayView: some View {
-        if person.unansweredCount > 0 {
-            Text("미해결 대화: \(person.unansweredCount)")
-                .foregroundColor(.orange)
-        }
-        
-        if person.isNeglected {
-            Text("이 사람과의 관계가 소홀해졌습니다. 다시 연결하세요.")
-                .foregroundColor(.blue)
-        }
-        
-        ConversationCard(
-            icon: "brain.head.profile",
-            title: "최근의 고민",
-            content: person.recentConcerns,
-            color: .purple
-        )
-        
-        ConversationCard(
-            icon: "questionmark.bubble",
-            title: "받았던 질문",
-            content: person.receivedQuestions,
-            color: .blue
-        )
-        
-        ConversationCard(
-            icon: "hand.raised",
-            title: "미해결된 약속",
-            content: person.unresolvedPromises,
-            color: .red
-        )
-        
-        if shouldShowEmptyConversationState {
-            emptyConversationStateView
-        }
-    }
-    
-    @ViewBuilder
-    private var emptyConversationStateView: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "bubble.left.and.text.page")
-                .font(.title3)
-                .foregroundStyle(.secondary)
             
-            Text("대화 기록이 비어있어요")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            // 소홀함 토글
+            Toggle("관계가 소홀함", isOn: $person.isNeglected)
             
-            Text("편집 모드에서 최근 고민, 받은 질문, 약속 등을 기록해보세요")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding()
-        .frame(maxWidth: .infinity)
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-    }
-    
-    @ViewBuilder
-    private var deleteSection: some View {
-        if isEditing {
-            Section {
-                Button(role: .destructive) {
-                    showDeleteConfirm = true
-                } label: {
-                    Text("이 사람 삭제")
+            // 새로운 고민 입력
+            VStack(alignment: .leading, spacing: 8) {
+                Text("새 고민 추가")
+                    .font(.headline)
+                    .foregroundStyle(.purple)
+                
+                TextField("이 사람이 최근에 고민하고 있는 것은?", text: $newConcern, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(2...4)
+                
+                if !newConcern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button("고민 기록하기") {
+                        addConversationRecord(type: .concern, content: newConcern)
+                        newConcern = ""
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.purple)
+                }
+            }
+            
+            // 새로운 질문 입력
+            VStack(alignment: .leading, spacing: 8) {
+                Text("받은 질문 추가")
+                    .font(.headline)
+                    .foregroundStyle(.blue)
+                
+                TextField("이 사람에게 받은 질문이나 요청사항은?", text: $newQuestion, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(2...4)
+                
+                if !newQuestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button("질문 기록하기") {
+                        addConversationRecord(type: .question, content: newQuestion)
+                        newQuestion = ""
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                }
+            }
+            
+            // 새로운 약속 입력
+            VStack(alignment: .leading, spacing: 8) {
+                Text("새 약속 추가")
+                    .font(.headline)
+                    .foregroundStyle(.red)
+                
+                TextField("아직 지키지 못한 약속이나 해야 할 일은?", text: $newPromise, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(2...4)
+                
+                if !newPromise.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button("약속 기록하기") {
+                        addConversationRecord(type: .promise, content: newPromise)
+                        newPromise = ""
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                }
+            }
+            
+            // 현재 대화 기록들 표시
+            if person.hasConversationRecords {
+                Divider()
+                
+                Text("현재 기록된 내용")
+                    .font(.headline)
+                    .padding(.top)
+                
+                // 현재 고민들
+                if !person.currentConcerns.isEmpty {
+                    ConversationRecordsList(
+                        title: "고민",
+                        icon: "🧠",
+                        color: .purple,
+                        records: person.getConversationRecords(ofType: .concern).filter { !$0.isResolved }
+                    )
+                }
+                
+                // 현재 질문들
+                if !person.allReceivedQuestions.isEmpty {
+                    ConversationRecordsList(
+                        title: "질문",
+                        icon: "❓",
+                        color: .blue,
+                        records: person.getConversationRecords(ofType: .question).filter { !$0.isResolved }
+                    )
+                }
+                
+                // 현재 약속들
+                if !person.currentUnresolvedPromises.isEmpty {
+                    ConversationRecordsList(
+                        title: "약속",
+                        icon: "🤝",
+                        color: .red,
+                        records: person.getConversationRecords(ofType: .promise).filter { !$0.isResolved }
+                    )
                 }
             }
         }
     }
     
+
+
+
+    
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Button(isEditing ? "완료" : "편집") {
-                isEditing.toggle()
-                try? context.save()
-            }
-        }
-        
         ToolbarItem(placement: .navigationBarTrailing) {
             Menu {
                 quickRecordMenuItems
@@ -1213,29 +1267,33 @@ struct PersonDetailView: View {
         }
     }
     
-    @ViewBuilder
-    private var deleteConfirmationButtons: some View {
-        Button("삭제", role: .destructive) {
-            AppStateManager.shared.clearSelection()
-            context.delete(person)
-            try? context.save()
-            dismiss()
-        }
-        
-        Button("취소", role: .cancel) { }
-    }
-    
-    // MARK: - Helper Properties
-    
-    private var shouldShowEmptyConversationState: Bool {
-        person.unansweredCount == 0 &&
-        !person.isNeglected &&
-        (person.recentConcerns?.isEmpty ?? true) &&
-        (person.receivedQuestions?.isEmpty ?? true) &&
-        (person.unresolvedPromises?.isEmpty ?? true)
-    }
     
     // MARK: - Helper Methods
+    
+    private func addConversationRecord(type: ConversationType, content: String) {
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedContent.isEmpty else { return }
+        
+        let priority: ConversationPriority = type == .promise ? .high : .normal
+        let record = person.addConversationRecord(
+            type: type,
+            content: trimmedContent,
+            priority: priority,
+            date: Date()
+        )
+        context.insert(record)
+        
+        do {
+            try context.save()
+            print("✅ \(type.title) 기록 추가 완료")
+            
+            // 햅틱 피드백
+            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+            impactFeedback.impactOccurred()
+        } catch {
+            print("❌ \(type.title) 기록 추가 실패: \(error)")
+        }
+    }
     
     private func recordQuickInteraction(type: InteractionType) {
         // 새로운 InteractionRecord 생성
@@ -1305,6 +1363,75 @@ struct PersonDetailView: View {
                 }
                 return ($0.action?.order ?? 0) < ($1.action?.order ?? 0)
             }
+    }
+}
+
+// MARK: - ConversationRecordsList
+struct ConversationRecordsList: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let records: [ConversationRecord]
+    @Environment(\.modelContext) private var context
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("\(icon) \(title) (\(records.count)개)")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(color)
+                Spacer()
+            }
+            
+            ForEach(records.prefix(3), id: \.id) { record in
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(record.content)
+                            .font(.body)
+                            .fixedSize(horizontal: false, vertical: true)
+                        
+                        HStack {
+                            Text(record.relativeDate)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            
+                            if record.priority == .high || record.priority == .urgent {
+                                Text(record.priority.emoji)
+                                    .font(.caption2)
+                            }
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    Button {
+                        // 해결됨으로 표시
+                        record.isResolved = true
+                        try? context.save()
+                        
+                        // 햅틱 피드백
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                    } label: {
+                        Image(systemName: "checkmark.circle")
+                            .foregroundStyle(color)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(color.opacity(0.1))
+                .cornerRadius(8)
+            }
+            
+            if records.count > 3 {
+                Text("외 \(records.count - 3)개 더 있음")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 12)
+            }
+        }
     }
 }
 
