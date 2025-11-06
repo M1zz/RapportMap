@@ -16,17 +16,64 @@ struct PeopleListView: View {
     @Query(sort: \Person.name) private var people: [Person]
     @State private var showingAdd = false
     @State private var searchText = ""
+    @State private var showingFilter = false
+    @State private var filterOptions = FilterOptions()
     
     // 검색 필터링된 사람들
     private var filteredPeople: [Person] {
-        if searchText.isEmpty {
-            return people
-        } else {
-            return people.filter { person in
+        var result = people
+        
+        // 검색 텍스트로 먼저 필터링
+        if !searchText.isEmpty {
+            result = result.filter { person in
                 person.name.localizedCaseInsensitiveContains(searchText) ||
                 person.contact.localizedCaseInsensitiveContains(searchText)
             }
         }
+        
+        // 관계 상태 필터
+        if !filterOptions.selectedStates.isEmpty {
+            result = result.filter { person in
+                filterOptions.selectedStates.contains(person.state)
+            }
+        }
+        
+        // 소홀 상태 필터
+        if filterOptions.showNeglectedOnly {
+            result = result.filter { $0.isNeglected }
+        }
+        
+        // 미완료 액션이 있는 사람만
+        if filterOptions.showWithIncompleteActionsOnly {
+            result = result.filter { person in
+                person.actions.contains { !$0.isCompleted }
+            }
+        }
+        
+        // 긴급 액션이 있는 사람만
+        if filterOptions.showWithCriticalActionsOnly {
+            result = result.filter { person in
+                let today = Calendar.current.startOfDay(for: Date())
+                return person.actions.contains { action in
+                    !action.isCompleted &&
+                    action.action?.type == .critical &&
+                    (action.reminderDate ?? Date.distantFuture) <= today
+                }
+            }
+        }
+        
+        // 최근 접촉 기준 필터
+        if let daysSince = filterOptions.lastContactDays {
+            let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysSince, to: Date()) ?? Date()
+            result = result.filter { person in
+                guard let lastContact = person.lastContact else {
+                    return filterOptions.includeNeverContacted
+                }
+                return lastContact >= cutoffDate
+            }
+        }
+        
+        return result
     }
     
     var body: some View {
@@ -74,6 +121,14 @@ struct PeopleListView: View {
                 }
                 #endif
                 ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { 
+                        showingFilter = true 
+                    } label: { 
+                        Image(systemName: filterOptions.hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                            .foregroundStyle(filterOptions.hasActiveFilters ? .blue : .primary)
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink(destination: ActionManagementView()) {
                         Image(systemName: "gearshape")
                     }
@@ -98,6 +153,9 @@ struct PeopleListView: View {
                         print("❌ 새 Person 저장 실패: \(error)")
                     }
                 }
+            }
+            .sheet(isPresented: $showingFilter) {
+                PeopleFilterView(filterOptions: $filterOptions, peopleCount: people.count, filteredCount: filteredPeople.count)
             }
             .onAppear {
                 // 앱 최초 실행 시 기본 액션 30개 생성
@@ -2865,6 +2923,274 @@ struct EmptyPeopleView: View {
 
 #Preview {
     PeopleListView()
+}
+
+// MARK: - FilterOptions
+@Observable
+class FilterOptions {
+    var selectedStates: Set<RelationshipState> = []
+    var showNeglectedOnly = false
+    var showWithIncompleteActionsOnly = false
+    var showWithCriticalActionsOnly = false
+    var lastContactDays: Int? = nil
+    var includeNeverContacted = true
+    
+    var hasActiveFilters: Bool {
+        !selectedStates.isEmpty ||
+        showNeglectedOnly ||
+        showWithIncompleteActionsOnly ||
+        showWithCriticalActionsOnly ||
+        lastContactDays != nil
+    }
+    
+    func reset() {
+        selectedStates.removeAll()
+        showNeglectedOnly = false
+        showWithIncompleteActionsOnly = false
+        showWithCriticalActionsOnly = false
+        lastContactDays = nil
+        includeNeverContacted = true
+    }
+}
+
+// MARK: - PeopleFilterView
+struct PeopleFilterView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var filterOptions: FilterOptions
+    let peopleCount: Int
+    let filteredCount: Int
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                // 결과 요약
+                Section {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("전체: \(peopleCount)명")
+                                .font(.headline)
+                            Text("필터링된 결과: \(filteredCount)명")
+                                .font(.subheadline)
+                                .foregroundStyle(filteredCount < peopleCount ? .blue : .secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        if filterOptions.hasActiveFilters {
+                            Button("모두 해제") {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    filterOptions.reset()
+                                }
+                            }
+                            .foregroundStyle(.red)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                
+                // 관계 상태 필터
+                Section("관계 상태") {
+                    ForEach(RelationshipState.allCases, id: \.self) { state in
+                        HStack {
+                            Text(state.emoji)
+                                .font(.title3)
+                            
+                            Text(state.localizedName)
+                                .font(.body)
+                            
+                            Spacer()
+                            
+                            if filterOptions.selectedStates.contains(state) {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.blue)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                if filterOptions.selectedStates.contains(state) {
+                                    filterOptions.selectedStates.remove(state)
+                                } else {
+                                    filterOptions.selectedStates.insert(state)
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // 특별 조건 필터
+                Section("특별 조건") {
+                    Toggle("소홀한 관계만 보기", isOn: $filterOptions.showNeglectedOnly)
+                        .tint(.orange)
+                    
+                    Toggle("미완료 액션이 있는 사람만", isOn: $filterOptions.showWithIncompleteActionsOnly)
+                        .tint(.blue)
+                    
+                    Toggle("긴급 액션이 있는 사람만", isOn: $filterOptions.showWithCriticalActionsOnly)
+                        .tint(.red)
+                }
+                
+                // 최근 접촉 기준
+                Section("최근 접촉 기준") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("최근 접촉:")
+                            Spacer()
+                            if let days = filterOptions.lastContactDays {
+                                Text("\(days)일 이내")
+                                    .foregroundStyle(.blue)
+                            } else {
+                                Text("모든 기간")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        
+                        // 빠른 선택 버튼들
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
+                            ForEach([7, 14, 30, 60, 90], id: \.self) { days in
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        filterOptions.lastContactDays = (filterOptions.lastContactDays == days) ? nil : days
+                                    }
+                                } label: {
+                                    Text("\(days)일")
+                                        .font(.caption)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            filterOptions.lastContactDays == days 
+                                                ? Color.blue 
+                                                : Color(.systemGray5)
+                                        )
+                                        .foregroundStyle(
+                                            filterOptions.lastContactDays == days 
+                                                ? .white 
+                                                : .primary
+                                        )
+                                        .cornerRadius(16)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    filterOptions.lastContactDays = nil
+                                }
+                            } label: {
+                                Text("전체")
+                                    .font(.caption)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        filterOptions.lastContactDays == nil 
+                                            ? Color.blue 
+                                            : Color(.systemGray5)
+                                    )
+                                    .foregroundStyle(
+                                        filterOptions.lastContactDays == nil 
+                                            ? .white 
+                                            : .primary
+                                    )
+                                    .cornerRadius(16)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        if filterOptions.lastContactDays != nil {
+                            Toggle("연락 기록이 없는 사람도 포함", isOn: $filterOptions.includeNeverContacted)
+                                .font(.caption)
+                                .tint(.gray)
+                        }
+                    }
+                }
+                
+                // 필터 프리셋
+                Section("빠른 필터") {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            filterOptions.reset()
+                            filterOptions.showNeglectedOnly = true
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(.orange)
+                            Text("소홀한 관계들")
+                            Spacer()
+                            Image(systemName: "arrow.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            filterOptions.reset()
+                            filterOptions.showWithCriticalActionsOnly = true
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: "alarm")
+                                .foregroundStyle(.red)
+                            Text("긴급 처리 필요")
+                            Spacer()
+                            Image(systemName: "arrow.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            filterOptions.reset()
+                            filterOptions.lastContactDays = 14
+                            filterOptions.includeNeverContacted = false
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: "clock.badge.exclamationmark")
+                                .foregroundStyle(.blue)
+                            Text("최근 2주간 접촉")
+                            Spacer()
+                            Image(systemName: "arrow.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            filterOptions.reset()
+                            filterOptions.selectedStates.insert(.close)
+                        }
+                    } label: {
+                        HStack {
+                            Text("❤️")
+                                .font(.body)
+                            Text("가까운 관계들")
+                            Spacer()
+                            Image(systemName: "arrow.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                }
+            }
+            .navigationTitle("필터 설정")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("완료") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
 }
 
 // MARK: - FlowLayout
