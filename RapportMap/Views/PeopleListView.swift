@@ -15,6 +15,19 @@ struct PeopleListView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Person.name) private var people: [Person]
     @State private var showingAdd = false
+    @State private var searchText = ""
+    
+    // 검색 필터링된 사람들
+    private var filteredPeople: [Person] {
+        if searchText.isEmpty {
+            return people
+        } else {
+            return people.filter { person in
+                person.name.localizedCaseInsensitiveContains(searchText) ||
+                person.contact.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -23,7 +36,7 @@ struct PeopleListView: View {
                     EmptyPeopleView()
                 } else {
                     List {
-                        ForEach(people) { person in
+                        ForEach(filteredPeople) { person in
                             NavigationLink(destination: PersonDetailView(person: person)) {
                                 PersonCard(person: person)
                             }
@@ -36,6 +49,11 @@ struct PeopleListView: View {
                         }
                         .onDelete(perform: delete)
                     }
+                    .searchable(
+                        text: $searchText,
+                        placement: .navigationBarDrawer(displayMode: .automatic),
+                        prompt: "이름이나 연락처로 검색"
+                    )
                 }
             }
             .navigationTitle("관계 지도")
@@ -92,7 +110,10 @@ struct PeopleListView: View {
     }
 
     private func delete(at offsets: IndexSet) {
-        for index in offsets { context.delete(people[index]) }
+        for index in offsets { 
+            let personToDelete = filteredPeople[index]
+            context.delete(personToDelete) 
+        }
     }
 
     private func addSampleData() {
