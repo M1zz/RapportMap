@@ -46,6 +46,9 @@ final class Person {
     
     @Relationship(deleteRule: .cascade, inverse: \InteractionRecord.person)
     var interactionRecords: [InteractionRecord] = []
+    
+    @Relationship(deleteRule: .cascade, inverse: \PersonContext.person)
+    var contexts: [PersonContext] = []
 
     init(
         id: UUID = UUID(),
@@ -58,7 +61,7 @@ final class Person {
         unansweredCount: Int = 0,
         lastContact: Date? = nil,
         isNeglected: Bool = false,
-        currentPhase: ActionPhase = .phase1,
+        currentPhase: ActionPhase = .surface,  // 기본값을 새로운 enum으로 변경
         relationshipStartDate: Date = Date(),
         preferredName: String = "",
         interests: String = "",
@@ -450,6 +453,166 @@ extension Person {
         }
         
         return recommendations
+    }
+}
+
+// MARK: - PersonContext Helpers
+extension Person {
+    /// 새로운 컨텍스트 추가
+    func addContext(category: ContextCategory, label: String, value: String, date: Date? = nil, modelContext: ModelContext) {
+        let context = PersonContext(
+            category: category,
+            label: label,
+            value: value,
+            date: date,
+            order: contexts.filter { $0.category == category }.count
+        )
+        context.person = self
+        modelContext.insert(context)
+        contexts.append(context)
+    }
+    
+    /// 특정 카테고리의 컨텍스트 가져오기
+    func getContexts(for category: ContextCategory) -> [PersonContext] {
+        return contexts
+            .filter { $0.category == category }
+            .sorted { $0.order < $1.order }
+    }
+    
+    /// 관심사 가져오기
+    func getInterests() -> [PersonContext] {
+        return getContexts(for: .interest)
+    }
+    
+    /// 취향/선호 가져오기
+    func getPreferences() -> [PersonContext] {
+        return getContexts(for: .preference)
+    }
+    
+    /// 중요한 날짜 가져오기
+    func getImportantDates() -> [PersonContext] {
+        return getContexts(for: .importantDate)
+    }
+    
+    /// 업무 스타일 가져오기
+    func getWorkStyles() -> [PersonContext] {
+        return getContexts(for: .workStyle)
+    }
+    
+    /// 배경 정보 가져오기
+    func getBackgrounds() -> [PersonContext] {
+        return getContexts(for: .background)
+    }
+    
+    /// 비어있지 않은 컨텍스트들만 가져오기
+    func getNonEmptyContexts(for category: ContextCategory) -> [PersonContext] {
+        return getContexts(for: category).filter { !$0.isEmpty }
+    }
+    
+    /// 다가오는 중요한 날짜들 (30일 이내)
+    func getUpcomingImportantDates() -> [PersonContext] {
+        return getImportantDates().filter { $0.isUpcoming }
+    }
+    
+    /// 기존 String 필드를 PersonContext로 마이그레이션 (호환성 유지)
+    func migrateStringFieldsToContexts(modelContext: ModelContext) {
+        // 이미 마이그레이션 되었는지 확인 (contexts가 이미 있으면 스킵)
+        if !contexts.isEmpty {
+            return
+        }
+        
+        // preferredName
+        if !preferredName.isEmpty {
+            addContext(category: .preference, label: "선호 호칭", value: preferredName, modelContext: modelContext)
+        }
+        
+        // interests - 쉼표로 분리
+        if !interests.isEmpty {
+            let interestList = interests.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            for (index, interest) in interestList.enumerated() {
+                let context = PersonContext(
+                    category: .interest,
+                    label: "관심사 \(index + 1)",
+                    value: interest,
+                    order: index
+                )
+                context.person = self
+                modelContext.insert(context)
+                contexts.append(context)
+            }
+        }
+        
+        // preferences - 쉼표로 분리
+        if !preferences.isEmpty {
+            let prefList = preferences.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            for (index, pref) in prefList.enumerated() {
+                let context = PersonContext(
+                    category: .preference,
+                    label: "선호 \(index + 1)",
+                    value: pref,
+                    order: index
+                )
+                context.person = self
+                modelContext.insert(context)
+                contexts.append(context)
+            }
+        }
+        
+        // importantDates - 쉼표로 분리
+        if !importantDates.isEmpty {
+            let dateList = importantDates.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            for (index, dateStr) in dateList.enumerated() {
+                let context = PersonContext(
+                    category: .importantDate,
+                    label: "중요한 날짜 \(index + 1)",
+                    value: dateStr,
+                    order: index
+                )
+                context.person = self
+                modelContext.insert(context)
+                contexts.append(context)
+            }
+        }
+        
+        // workStyle - 쉼표로 분리
+        if !workStyle.isEmpty {
+            let styleList = workStyle.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            for (index, style) in styleList.enumerated() {
+                let context = PersonContext(
+                    category: .workStyle,
+                    label: "업무 스타일 \(index + 1)",
+                    value: style,
+                    order: index
+                )
+                context.person = self
+                modelContext.insert(context)
+                contexts.append(context)
+            }
+        }
+        
+        // background - 쉼표로 분리
+        if !background.isEmpty {
+            let bgList = background.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            for (index, bg) in bgList.enumerated() {
+                let context = PersonContext(
+                    category: .background,
+                    label: "배경 \(index + 1)",
+                    value: bg,
+                    order: index
+                )
+                context.person = self
+                modelContext.insert(context)
+                contexts.append(context)
+            }
+        }
+        
+        print("✅ [\(name)] String 필드를 PersonContext로 마이그레이션 완료 (\(contexts.count)개)")
+    }
+    
+    /// 편의 메서드: 선호 호칭 가져오기
+    var displayName: String {
+        let preferredNameContext = getPreferences().first { $0.label == "선호 호칭" }
+        return preferredNameContext?.value.isEmpty == false ? preferredNameContext!.value : name
     }
 }
 
