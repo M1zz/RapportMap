@@ -39,6 +39,7 @@ struct AppRootView: View {
     @Environment(\.modelContext) private var context
     @State private var appStateManager = AppStateManager.shared
     @State private var isLoading = true
+    @State private var selectedTab = 0  // 선택된 탭 상태 관리
     
     private var currentState: AppRootState {
         if isLoading {
@@ -68,17 +69,23 @@ struct AppRootView: View {
             case .restoringSession(let selectedPerson):
                 // PersonDetailView를 직접 표시
                 NavigationStack {
-                    PersonDetailView(person: selectedPerson)
+                    PersonDetailView(person: selectedPerson, selectedTab: $selectedTab)
                         .toolbar {
                             ToolbarItem(placement: .navigationBarLeading) {
                                 Button("목록으로") {
                                     appStateManager.clearSelection()
                                 }
                             }
-                        }
-                        .onDisappear {
-                            // PersonDetailView가 사라질 때는 상태 유지 (다른 뷰로 이동한 경우)
-                            // 실제 앱 종료나 홈으로 갔을 때만 상태가 복원됨
+                            
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                Picker("보기 모드", selection: $selectedTab) {
+                                    Text("활동").tag(0)
+                                    Text("관계").tag(1)
+                                    Text("정보").tag(2)
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 180)
+                            }
                         }
                 }
                 

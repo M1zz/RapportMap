@@ -85,11 +85,6 @@ enum InteractionType: String, Codable, CaseIterable {
 }
 
 extension InteractionRecord {
-    var relativeDate: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: .now)
-    }
     
     var isRecent: Bool {
         let daysSince = Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
