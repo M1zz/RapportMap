@@ -286,38 +286,6 @@ struct PeopleListView: View {
     }
 }
 
-// MARK: - AddPersonSheet
-struct AddPersonSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-    @State private var contact = ""
-    var onAdd: (String, String) -> Void
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("기본 정보") {
-                    TextField("이름", text: $name)
-                    TextField("연락처 (선택)", text: $contact)
-                }
-            }
-            .navigationTitle("새로운 사람 추가")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("취소") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("추가") {
-                        onAdd(name, contact)
-                        dismiss()
-                    }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-        }
-    }
-}
-
 struct PersonCard: View {
     @Bindable var person: Person
     @State private var showingQuickRecord = false
@@ -1185,7 +1153,6 @@ struct PersonDetailView: View {
             
             // 현재 대화 기록들 표시
             if person.hasConversationRecords {
-                Divider()
                 
                 Text("현재 기록된 내용")
                     .font(.headline)
