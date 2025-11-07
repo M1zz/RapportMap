@@ -83,7 +83,7 @@ struct PeopleListView: View {
                 } else {
                     List {
                         ForEach(filteredPeople) { person in
-                            NavigationLink(destination: PersonDetailView(person: person)) {
+                            NavigationLink(destination: PersonDetailView(person: person, selectedTab: .constant(0))) {
                                 PersonCard(person: person)
                             }
                             .simultaneousGesture(

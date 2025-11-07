@@ -15,6 +15,7 @@ struct RecentInteractionsView: View {
     @State private var showingEditSheet = false
     @State private var showingHistory = false
     @State private var interactionToEdit: InteractionType?
+    @State private var recordToShow: InteractionRecord?
     
     // 기본 상호작용 타입들 (호환성을 위해)
     private let basicTypes: [InteractionType] = [.mentoring, .meal, .contact]
@@ -34,6 +35,14 @@ struct RecentInteractionsView: View {
         }
         .sheet(isPresented: $showingHistory) {
             InteractionHistoryView(person: person)
+        }
+        .sheet(item: $recordToShow) { record in
+            InteractionRecordDetailView(record: record, person: person) {
+                // 편집 버튼을 눌렀을 때
+                recordToShow = nil
+                interactionToEdit = record.type
+                showingEditSheet = true
+            }
         }
     }
     
@@ -136,12 +145,12 @@ struct RecentInteractionsView: View {
             EditInteractionRecordSheet(record: latestRecord)
         }
     }
+
     
     // MARK: - Actions
     
     private func handleCardTap(for record: InteractionRecord) {
-        interactionToEdit = record.type
-        showingEditSheet = true
+        recordToShow = record
     }
     
     private func handleQuickAction(for type: InteractionType) {
@@ -157,6 +166,213 @@ struct RecentInteractionsView: View {
         // 편집 시트 열기
         interactionToEdit = type
         showingEditSheet = true
+    }
+}
+
+// MARK: - InteractionRecordDetailView
+struct InteractionRecordDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    let record: InteractionRecord
+    let person: Person
+    let onEdit: () -> Void
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // 헤더 섹션
+                    VStack(spacing: 16) {
+                        // 이모지와 타입
+                        VStack(spacing: 8) {
+                            Text(record.type.emoji)
+                                .font(.system(size: 60))
+                            
+                            Text(record.type.title)
+                                .font(.title)
+                                .fontWeight(.bold)
+                                .foregroundStyle(record.type.color)
+                        }
+                        
+                        // 날짜와 시간 정보
+                        VStack(spacing: 4) {
+                            Text(record.date.formatted(date: .complete, time: .omitted))
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            
+                            HStack(spacing: 4) {
+                                Text(record.date.formatted(date: .omitted, time: .shortened))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                
+                                if record.isRecent {
+                                    Text("• 최근")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.green)
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                            
+                            Text(record.relativeDate)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(record.type.color.opacity(0.1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(record.type.color.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+                    
+                    // 상세 정보 섹션들
+                    VStack(spacing: 16) {
+                        // 위치 정보
+                        if let location = record.location, !location.isEmpty {
+                            DetailInfoCard(
+                                title: "위치",
+                                icon: "location",
+                                content: location,
+                                color: .orange
+                            )
+                        }
+                        
+                        // 메모
+                        if let notes = record.notes, !notes.isEmpty {
+                            DetailInfoCard(
+                                title: "메모",
+                                icon: "note.text",
+                                content: notes,
+                                color: .blue
+                            )
+                        }
+                        
+                        // 연락 상세 (연락 타입인 경우)
+                        if [.contact, .call, .message].contains(record.type) {
+                            DetailInfoCard(
+                                title: "연락 방식",
+                                icon: record.type.systemImage,
+                                content: record.type.title,
+                                color: record.type.color
+                            )
+                        }
+                    }
+                    
+                    // 통계 정보 (해당 타입의 총 횟수)
+                    let sameTypeRecords = person.getInteractionRecords(ofType: record.type)
+                    if sameTypeRecords.count > 1 {
+                        VStack(spacing: 12) {
+                            HStack {
+                                Text("통계")
+                                    .font(.headline)
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                            
+                            HStack(spacing: 20) {
+                                StatCard(
+                                    title: "총 \(record.type.title) 횟수",
+                                    value: "\(sameTypeRecords.count)회",
+                                    color: record.type.color
+                                )
+                                
+                                if let firstRecord = sameTypeRecords.last {
+                                    StatCard(
+                                        title: "첫 번째",
+                                        value: firstRecord.date.formatted(date: .abbreviated, time: .omitted),
+                                        color: .secondary
+                                    )
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("상호작용 상세")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("닫기") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("편집") {
+                        onEdit()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - DetailInfoCard
+struct DetailInfoCard: View {
+    let title: String
+    let icon: String
+    let content: String
+    let color: Color
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .foregroundStyle(color)
+                    .font(.caption)
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            
+            Text(content)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.leading)
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - StatCard
+struct StatCard: View {
+    let title: String
+    let value: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundStyle(color)
+            
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - InteractionRecord Extension
+extension InteractionRecord {
+    var relativeDate: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: self.date, relativeTo: .now)
     }
 }
 

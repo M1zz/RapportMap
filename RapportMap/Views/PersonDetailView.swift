@@ -8,6 +8,21 @@
 import SwiftUI
 import SwiftData
 
+// 상세 뷰 탭 정의
+enum PersonDetailTab: Int, CaseIterable {
+    case activities = 0
+    case relationship = 1
+    case info = 2
+    
+    var title: String {
+        switch self {
+        case .info: return "정보"
+        case .activities: return "활동"
+        case .relationship: return "관계"
+        }
+    }
+}
+
 struct PersonDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -17,42 +32,32 @@ struct PersonDetailView: View {
     @State private var selectedInteractionType: InteractionType?
     @State private var isMeetingRecordsExpanded = false
     @State private var showingQuickRecord = false
-
+    @Binding var selectedTab: Int
+    
     @Bindable var person: Person
 
-    init(person: Person) {
+    init(person: Person, selectedTab: Binding<Int> = .constant(0)) {
         self._person = Bindable(person)
+        self._selectedTab = selectedTab
+    }
+    
+    private var currentTab: PersonDetailTab {
+        PersonDetailTab(rawValue: selectedTab) ?? .activities
     }
     
     var body: some View {
         Form {
-            // 상호작용 섹션
-            recentInteractionsSection
-            
-            // 녹음 섹션들
-            recordingSection
-            
-            // 관계
-            relationshipStatusSection
-            
-            // 상태
-            conversationStateSection
-            
-            // 도움
-            actionChecklistSection
-            
-            // 놓치면 안됨
-            criticalActionsSection
-            
-            // 정보 섹션들
-            knowledgeSection
-            
-            
-            // 기본 정보
-            basicInfoSection
+            // 선택된 탭에 따라 다른 내용 표시
+            switch currentTab {
+            case .activities:
+                activitiesTabContent  
+            case .relationship:
+                relationshipTabContent
+            case .info:
+                infoTabContent
+            }
         }
         .navigationTitle(person.name)
-        .toolbar { toolbarContent }
         .sheet(isPresented: $showingVoiceRecorder) {
             VoiceRecorderView(person: person)
         }
@@ -68,6 +73,41 @@ struct PersonDetailView: View {
         .sheet(isPresented: $showingQuickRecord) {
             QuickRecordSheet(person: person)
         }
+    }
+    
+    // MARK: - Tab Content Views
+    @ViewBuilder
+    private var activitiesTabContent: some View {
+        // 상호작용 섹션
+        recentInteractionsSection
+        
+        // 녹음 섹션들
+        recordingSection
+        
+        // 놓치면 안되는 것들
+        criticalActionsSection
+    }
+    
+    @ViewBuilder
+    private var relationshipTabContent: some View {
+        // 관계 상태
+        relationshipStatusSection
+        
+        // 대화/상태
+        conversationStateSection
+    }
+    
+    @ViewBuilder
+    private var infoTabContent: some View {
+        // 기본 정보
+        basicInfoSection
+        
+        // 알게 된 정보
+        knowledgeSection
+        
+        // 액션 체크리스트
+        actionChecklistSection
+        
     }
     
     // MARK: - View Sections
@@ -355,46 +395,6 @@ struct PersonDetailView: View {
             ConversationRecordsView(person: person)
         }
     }
-    
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Menu {
-                quickRecordMenuItems
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .accessibilityLabel("빠른 액션")
-        }
-    }
-    
-    @ViewBuilder
-    private var quickRecordMenuItems: some View {
-        Button {
-            person.addInteractionRecord(type: .mentoring, date: Date())
-            person.updateRelationshipState()
-            try? context.save()
-        } label: {
-            Label("멘토링 지금 기록", systemImage: "person.badge.clock")
-        }
-        
-        Button {
-            person.addInteractionRecord(type: .meal, date: Date())
-            person.updateRelationshipState()
-            try? context.save()
-        } label: {
-            Label("식사 지금 기록", systemImage: "fork.knife.circle")
-        }
-        
-        Button {
-            person.addInteractionRecord(type: .contact, date: Date())
-            person.updateRelationshipState()
-            try? context.save()
-        } label: {
-            Label("접촉 지금 기록", systemImage: "bubble.left")
-        }
-    }
-    
     
     // MARK: - Helper Methods
     
