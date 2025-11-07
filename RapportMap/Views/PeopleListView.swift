@@ -8,7 +8,6 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
-import AVFoundation
 import Combine
 
 struct PeopleListView: View {
@@ -222,9 +221,6 @@ struct PeopleListView: View {
             let lastMentoring = randomPastDate(maxDays: 60)
             let lastMeal = randomPastDate(maxDays: 90)
             let lastContact = randomPastDate(maxDays: 120)
-            // 소홀 여부는 마지막 접촉일이 오래됐거나 상태가 distant일 때 높게
-            let neglectedBias = (state == .distant ? 2 : 0) + ((lastContact == nil || (lastContact! < now.addingTimeInterval(-45 * day))) ? 2 : 0)
-            let isNeglected = Int.random(in: 0...4) < neglectedBias
 
             let p = Person(
                 id: UUID(),
@@ -233,8 +229,7 @@ struct PeopleListView: View {
                 state: state,
                 lastMentoring: lastMentoring,
                 lastMeal: lastMeal,
-                lastContact: lastContact,
-                isNeglected: isNeglected
+                lastContact: lastContact
             )
             context.insert(p)
             
@@ -402,15 +397,15 @@ struct PersonCard: View {
         
         // 상호작용 기록
         if let mentoring = person.lastMentoring {
-            items.append(AnyView(Chip(text: "🧑‍🏫 \(relative(mentoring))")))
+            items.append(AnyView(Chip(text: "🧑‍🏫 \(mentoring.relative())")))
         }
         
         if let meal = person.lastMeal {
-            items.append(AnyView(Chip(text: "🍱 \(relative(meal))")))
+            items.append(AnyView(Chip(text: "🍱 \(meal.relative())")))
         }
         
         if let contact = person.lastContact {
-            items.append(AnyView(Chip(text: "📞 \(relative(contact))")))
+            items.append(AnyView(Chip(text: "📞 \(contact.relative())")))
         }
         
         // 미해결 대화
@@ -506,7 +501,7 @@ struct PersonCard: View {
     private var footerSection: some View {
         HStack {
             if let lastContact = person.lastContact {
-                Text("마지막 접촉: \(relative(lastContact))")
+                Text("마지막 접촉: \(lastContact.relative())")
                     .font(.body)
                     .foregroundStyle(.secondary)
             }
@@ -526,16 +521,6 @@ struct Chip: View {
     }
 }
 
-
-
-private func relative(_ date: Date) -> String {
-    let formatter = RelativeDateTimeFormatter()
-    formatter.unitsStyle = .abbreviated
-    return formatter.localizedString(for: date, relativeTo: .now)
-}
-
-
-
 struct PersonDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -545,11 +530,6 @@ struct PersonDetailView: View {
     @State private var selectedInteractionType: InteractionType?
     @State private var isMeetingRecordsExpanded = true
     @State private var showingQuickRecord = false
-    
-    // 대화/상태 입력을 위한 State 변수들
-    @State private var newConcern = ""
-    @State private var newQuestion = ""
-    @State private var newPromise = ""
 
     @Bindable var person: Person
 
@@ -604,7 +584,7 @@ struct PersonDetailView: View {
     
     @ViewBuilder
     private var recentInteractionsSection: some View {
-        Section {
+        Section("상호작용") {
             RecentInteractionsView(person: person)
         }
     }
@@ -809,13 +789,8 @@ struct PersonDetailView: View {
     private var relationshipStatusSection: some View {
         Section("상태") {
             RelationshipAnalysisCard(person: person)
-            
         }
     }
-    
-
-    
-
     
     @ViewBuilder
     private var conversationStateSection: some View {
@@ -844,8 +819,6 @@ struct PersonDetailView: View {
                 .padding(.vertical, 8)
             }
             
-            Divider()
-            
             // 현재 미해결 대화 수 표시
             HStack {
                 Text("미해결 대화:")
@@ -854,112 +827,43 @@ struct PersonDetailView: View {
                     .foregroundStyle(.secondary)
             }
             
-            // 소홀함 토글
-            Toggle("관계가 소홀함", isOn: $person.isNeglected)
-            
-            // 새로운 고민 입력
+            // 소홀함 상태 표시 (자동 계산됨)
             VStack(alignment: .leading, spacing: 8) {
-                Text("새 고민 추가")
-                    .font(.headline)
-                    .foregroundStyle(.purple)
-                
-                TextField("이 사람이 최근에 고민하고 있는 것은?", text: $newConcern, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(2...4)
-                
-                if !newConcern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Button("고민 기록하기") {
-                        addConversationRecord(type: .concern, content: newConcern)
-                        newConcern = ""
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.purple)
+                HStack {
+                    Image(systemName: person.isNeglected ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                        .foregroundStyle(person.isNeglected ? .red : .green)
+                    
+                    Text("관계 관리 상태")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    Text(person.isNeglected ? "소홀함" : "양호함")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(person.isNeglected ? .red : .green)
                 }
+                
+                Text(person.neglectedReason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
             }
+            .padding()
+            .background(person.isNeglected ? Color.red.opacity(0.05) : Color.green.opacity(0.05))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(person.isNeglected ? Color.red.opacity(0.2) : Color.green.opacity(0.2), lineWidth: 1)
+            )
             
-            // 새로운 질문 입력
-            VStack(alignment: .leading, spacing: 8) {
-                Text("받은 질문 추가")
-                    .font(.headline)
-                    .foregroundStyle(.blue)
-                
-                TextField("이 사람에게 받은 질문이나 요청사항은?", text: $newQuestion, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(2...4)
-                
-                if !newQuestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Button("질문 기록하기") {
-                        addConversationRecord(type: .question, content: newQuestion)
-                        newQuestion = ""
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.blue)
-                }
-            }
-            
-            // 새로운 약속 입력
-            VStack(alignment: .leading, spacing: 8) {
-                Text("새 약속 추가")
-                    .font(.headline)
-                    .foregroundStyle(.red)
-                
-                TextField("아직 지키지 못한 약속이나 해야 할 일은?", text: $newPromise, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(2...4)
-                
-                if !newPromise.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Button("약속 기록하기") {
-                        addConversationRecord(type: .promise, content: newPromise)
-                        newPromise = ""
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                }
-            }
-            
-            // 현재 대화 기록들 표시
-            if person.hasConversationRecords {
-                
-                Text("현재 기록된 내용")
-                    .font(.headline)
-                    .padding(.top)
-                
-                // 현재 고민들
-                if !person.currentConcerns.isEmpty {
-                    ConversationRecordsList(
-                        title: "고민",
-                        icon: "🧠",
-                        color: .purple,
-                        records: person.getConversationRecords(ofType: .concern).filter { !$0.isResolved }
-                    )
-                }
-                
-                // 현재 질문들
-                if !person.allReceivedQuestions.isEmpty {
-                    ConversationRecordsList(
-                        title: "질문",
-                        icon: "❓",
-                        color: .blue,
-                        records: person.getConversationRecords(ofType: .question).filter { !$0.isResolved }
-                    )
-                }
-                
-                // 현재 약속들
-                if !person.currentUnresolvedPromises.isEmpty {
-                    ConversationRecordsList(
-                        title: "약속",
-                        icon: "🤝",
-                        color: .red,
-                        records: person.getConversationRecords(ofType: .promise).filter { !$0.isResolved }
-                    )
-                }
-            }
+            // 대화 기록 버튼들과 전체 기록 보기
+            ConversationRecordsView(person: person)
         }
     }
-    
-
-
-
     
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
@@ -1002,31 +906,6 @@ struct PersonDetailView: View {
     
     
     // MARK: - Helper Methods
-    
-    private func addConversationRecord(type: ConversationType, content: String) {
-        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedContent.isEmpty else { return }
-        
-        let priority: ConversationPriority = type == .promise ? .high : .normal
-        let record = person.addConversationRecord(
-            type: type,
-            content: trimmedContent,
-            priority: priority,
-            date: Date()
-        )
-        context.insert(record)
-        
-        do {
-            try context.save()
-            print("✅ \(type.title) 기록 추가 완료")
-            
-            // 햅틱 피드백
-            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-            impactFeedback.impactOccurred()
-        } catch {
-            print("❌ \(type.title) 기록 추가 실패: \(error)")
-        }
-    }
     
     private func recordQuickInteraction(type: InteractionType) {
         // 새로운 InteractionRecord 생성
@@ -1099,570 +978,6 @@ struct PersonDetailView: View {
     }
 }
 
-// MARK: - ConversationRecordsList
-struct ConversationRecordsList: View {
-    let title: String
-    let icon: String
-    let color: Color
-    let records: [ConversationRecord]
-    @Environment(\.modelContext) private var context
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("\(icon) \(title) (\(records.count)개)")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(color)
-                Spacer()
-            }
-            
-            ForEach(records.prefix(3), id: \.id) { record in
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(record.content)
-                            .font(.body)
-                            .fixedSize(horizontal: false, vertical: true)
-                        
-                        HStack {
-                            Text(record.relativeDate)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            
-                            if record.priority == .high || record.priority == .urgent {
-                                Text(record.priority.emoji)
-                                    .font(.caption2)
-                            }
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    Button {
-                        // 해결됨으로 표시
-                        record.isResolved = true
-                        try? context.save()
-                        
-                        // 햅틱 피드백
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
-                    } label: {
-                        Image(systemName: "checkmark.circle")
-                            .foregroundStyle(color)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(color.opacity(0.1))
-                .cornerRadius(8)
-            }
-            
-            if records.count > 3 {
-                Text("외 \(records.count - 3)개 더 있음")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 12)
-            }
-        }
-    }
-}
-
-// MARK: - Helper Views
-
-struct KnowledgeItemView: View {
-    let personAction: PersonAction
-    let action: RapportAction
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.caption)
-                    .foregroundStyle(.blue)
-                
-                Text(action.title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                
-                Text("정보")
-                    .font(.caption2)
-                    .fontWeight(.bold)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.blue.opacity(0.2)))
-                    .foregroundStyle(.blue)
-            }
-            
-            Text(personAction.context)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-            
-            if let completedDate = personAction.completedDate {
-                Text("완료: \(completedDate.formatted(date: .abbreviated, time: .omitted))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-struct MeetingRecordRowView: View {
-    let record: MeetingRecord
-    
-    var body: some View {
-        NavigationLink(destination: MeetingRecordDetailView(record: record)) {
-            HStack {
-                Text(record.meetingType.emoji)
-                    .font(.title3)
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(record.meetingType.rawValue)
-                        .font(.headline)
-                    Text(record.date.formatted(date: .abbreviated, time: .shortened))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    
-                    if !record.transcribedText.isEmpty {
-                        Text(record.transcribedText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct EditableConversationField: View {
-    let title: String
-    let placeholder: String
-    @Binding var text: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextField(placeholder, text: $text, axis: .vertical)
-                .lineLimit(2...4)
-                .textFieldStyle(.roundedBorder)
-        }
-    }
-}
-
-struct ConversationCard: View {
-    let icon: String
-    let title: String
-    let content: String?
-    let color: Color
-    
-    var body: some View {
-        if let content = content, !content.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: icon)
-                        .font(.caption)
-                        .foregroundStyle(color)
-                    Text(title)
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(color)
-                }
-                Text(content)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(color.opacity(0.1))
-                    .cornerRadius(8)
-            }
-        }
-    }
-}
-
-// MARK: - RecentInteractionsView
-struct RecentInteractionsView: View {
-    @Environment(\.modelContext) private var context
-    @Bindable var person: Person
-    @State private var showingEditSheet = false
-    @State private var showingHistory = false
-    @State private var interactionToEdit: InteractionType?
-    
-    // 기본 상호작용 타입들 (호환성을 위해)
-    private let basicTypes: [InteractionType] = [.mentoring, .meal, .contact]
-    
-    // 최근 상호작용들을 날짜순으로 정렬 (새로운 InteractionRecord 기반)
-    private var sortedInteractions: [InteractionRecord] {
-        return person.getAllInteractionRecordsSorted().prefix(6).map { $0 }
-    }
-    
-    var body: some View {
-        VStack(spacing: 16) {
-            // 히스토리 보기 헤더
-            HStack {
-                Text("상호작용")
-                    .font(.body)
-                
-                Spacer()
-                
-                Button {
-                    showingHistory = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.body)
-                        Text("전체 기록 보기")
-                            .font(.body)
-                    }
-                    .foregroundStyle(.blue)
-                }
-            }
-            
-            // 가로 스크롤 카드들 (최근 6개만)
-            if !sortedInteractions.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(sortedInteractions, id: \.id) { record in
-                            InteractionRecordCard(
-                                record: record,
-                                onTap: {
-                                    showingEditSheet = true
-                                    // 편집을 위해 record를 설정해야 함
-                                }
-                            )
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-                .scrollTargetBehavior(.viewAligned)
-            } else {
-                VStack(spacing: 12) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                    Text("아직 상호작용 기록이 없어요")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-            }
-            
-            // 빠른 액션 버튼들
-            VStack(spacing: 8) {
-                Text("빠른 기록")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                
-                HStack(spacing: 12) {
-                    ForEach(basicTypes, id: \.self) { type in
-                        Button {
-                            // "지금" 기록 후 편집 시트 열기
-                            person.addInteractionRecord(type: type, date: Date())
-                            person.updateRelationshipState()
-                            try? context.save()
-                            
-                            // 햅틱 피드백
-                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                            impactFeedback.impactOccurred()
-                            
-                            // 편집 시트 열기
-                            interactionToEdit = type
-                            showingEditSheet = true
-                        } label: {
-                            VStack(spacing: 4) {
-                                Image(systemName: type.systemImage)
-                                    .font(.body)
-                                Text("지금")
-                                    .font(.body)
-                            }
-                            .foregroundStyle(.blue)
-                            .padding(8)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(8)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            .padding()
-            .background(Color(.systemGray6))
-            .cornerRadius(12)
-        }
-        .sheet(isPresented: $showingEditSheet) {
-            if let interactionType = interactionToEdit,
-               let latestRecord = person.getInteractionRecords(ofType: interactionType).first {
-                EditInteractionRecordSheet(record: latestRecord)
-            }
-        }
-        .sheet(isPresented: $showingHistory) {
-            InteractionHistoryView(person: person)
-        }
-    }
-}
-
-// MARK: - InteractionRecordCard
-struct InteractionRecordCard: View {
-    let record: InteractionRecord
-    let onTap: () -> Void
-    
-    private var relativeDate: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: record.date, relativeTo: .now)
-    }
-    
-    var body: some View {
-        Button(action: onTap) {
-            VStack(spacing: 8) {
-                // 이모지와 타이틀
-                VStack(spacing: 4) {
-                    Text(record.type.emoji)
-                        .font(.largeTitle)
-                    
-                    Text(record.type.title)
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(record.type.color)
-                }
-                
-                // 상대적 시간
-                Text(relativeDate)
-                    .font(.caption)
-                    .foregroundStyle(record.isRecent ? .green : .secondary)
-                    .fontWeight(record.isRecent ? .semibold : .regular)
-                
-                // 정확한 날짜
-                Text(record.date.formatted(date: .abbreviated, time: .omitted))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                
-                // 내용 표시 (있는 경우)
-                if let notes = record.notes, !notes.isEmpty {
-                    Text(notes)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .padding(.horizontal, 4)
-                } else if let location = record.location, !location.isEmpty {
-                    HStack(spacing: 2) {
-                        Image(systemName: "location")
-                            .font(.caption2)
-                        Text(location)
-                            .font(.caption2)
-                    }
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                }
-            }
-            .padding()
-            .frame(width: 120, height: (record.notes?.isEmpty == false || record.location?.isEmpty == false) ? 160 : 140)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(record.isRecent ? record.type.color.opacity(0.1) : Color(.systemGray6))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(record.isRecent ? record.type.color.opacity(0.3) : Color.clear, lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - InteractionHistoryView
-struct InteractionHistoryView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var context
-    let person: Person
-    
-    // 필터링 옵션
-    enum FilterOption: String, CaseIterable {
-        case all = "전체"
-        case mentoring = "멘토링"
-        case meal = "식사"
-        case contact = "연락"
-        
-        var interactionType: InteractionType? {
-            switch self {
-            case .all: return nil
-            case .mentoring: return .mentoring
-            case .meal: return .meal
-            case .contact: return .contact
-            }
-        }
-        
-        var systemImage: String {
-            switch self {
-            case .all: return "list.bullet"
-            case .mentoring: return "person.badge.clock"
-            case .meal: return "fork.knife"
-            case .contact: return "bubble.left"
-            }
-        }
-    }
-    
-    @State private var selectedFilter: FilterOption = .all
-    
-    // 필터링된 상호작용 기록들
-    private var filteredInteractionRecords: [InteractionRecord] {
-        let allRecords = person.getAllInteractionRecordsSorted()
-        
-        guard let filterType = selectedFilter.interactionType else {
-            return allRecords
-        }
-        
-        return allRecords.filter { record in
-            // contact 필터의 경우 contact, call, message 모두 포함
-            if filterType == .contact {
-                return [.contact, .call, .message].contains(record.type)
-            }
-            return record.type == filterType
-        }
-    }
-    
-    // 타입별로 그룹화된 기록들
-    private var groupedRecords: [(InteractionType, [InteractionRecord])] {
-        let records = filteredInteractionRecords
-        let grouped = Dictionary(grouping: records) { $0.type }
-        
-        // 순서를 유지하면서 반환
-        return InteractionType.allCases.compactMap { type in
-            guard let typeRecords = grouped[type], !typeRecords.isEmpty else { return nil }
-            return (type, typeRecords)
-        }
-    }
-    
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // 세그먼트 컨트롤
-                VStack(spacing: 12) {
-                    Picker("필터", selection: $selectedFilter) {
-                        ForEach(FilterOption.allCases, id: \.self) { option in
-                            Text(option.rawValue)
-                                .tag(option)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    
-                    // 선택된 필터의 통계 정보
-                    HStack(spacing: 20) {
-                        VStack(spacing: 4) {
-                            Text("\(filteredInteractionRecords.count)")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.blue)
-                            Text("총 기록")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        
-                        if selectedFilter != .all {
-                            VStack(spacing: 4) {
-                                if let mostRecentRecord = filteredInteractionRecords.first {
-                                    Text(mostRecentRecord.relativeDate)
-                                        .font(.title3)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.green)
-                                    Text("최근 기록")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    Text("없음")
-                                        .font(.title3)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.secondary)
-                                    Text("최근 기록")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                }
-                .padding(.vertical, 12)
-                .background(Color(.systemGroupedBackground))
-                
-                // 내용 영역
-                if filteredInteractionRecords.isEmpty {
-                    // 빈 상태 표시
-                    VStack(spacing: 20) {
-                        Image(systemName: selectedFilter.systemImage)
-                            .font(.system(size: 60))
-                            .foregroundStyle(.secondary)
-                        
-                        Text("\(selectedFilter.rawValue) 기록이 없어요")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        
-                        Text(selectedFilter == .all 
-                             ? "멘토링, 식사, 연락 등의 기록을 추가해보세요." 
-                             : "\(selectedFilter.rawValue) 기록을 추가해보세요.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                        
-                        Button("기록 추가하러 가기") {
-                            dismiss()
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(Color.blue)
-                        .foregroundStyle(.white)
-                        .cornerRadius(10)
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(.systemGroupedBackground))
-                } else {
-                    List {
-                        if selectedFilter == .all {
-                            // 전체 보기: 타입별로 그룹화하여 섹션으로 표시
-                            ForEach(groupedRecords, id: \.0) { interactionType, records in
-                                Section(header: SectionHeaderView(type: interactionType)) {
-                                    ForEach(records, id: \.id) { record in
-                                        InteractionRecordRow(record: record)
-                                    }
-                                }
-                            }
-                        } else {
-                            // 특정 타입 보기: 날짜순으로 단순 나열
-                            Section {
-                                ForEach(filteredInteractionRecords, id: \.id) { record in
-                                    InteractionRecordRow(record: record)
-                                }
-                            } header: {
-                                if let filterType = selectedFilter.interactionType {
-                                    SectionHeaderView(type: filterType)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("상호작용 기록")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("완료") {
-                    dismiss()
-                }
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: selectedFilter)
-    }
-}
 
 // MARK: - SectionHeaderView
 struct SectionHeaderView: View {
@@ -2023,10 +1338,6 @@ struct EditInteractionRecordSheet: View {
     }
 }
 
-
-
-
-
 // MARK: - EditInteractionSheet (레거시 호환성을 위해 유지)
 struct EditInteractionSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -2259,8 +1570,6 @@ struct QuickDateButton: View {
         .buttonStyle(.plain)
     }
 }
-
-
 
 // MARK: - CriticalActionReminderRow
 struct CriticalActionReminderRow: View {
@@ -2781,314 +2090,722 @@ struct EmptyPeopleView: View {
     }
 }
 
-#Preview {
-    PeopleListView()
-}
-
-
-// MARK: - AudioPlayerView
-struct AudioPlayerView: View {
-    let audioURL: URL
-    let totalDuration: TimeInterval
+// MARK: - ConversationRecordsView
+struct ConversationRecordsView: View {
+    @Environment(\.modelContext) private var context
+    @Bindable var person: Person
     
-    @StateObject private var player = AudioPlayer()
-    @State private var isPlaying = false
-    @State private var currentTime: TimeInterval = 0
-    @State private var isDragging = false
+    @State private var showingHistory = false
+    @State private var showingAddConcern = false
+    @State private var showingAddQuestion = false
+    @State private var showingAddPromise = false
+    
+    private var unsolvedConcernsCount: Int {
+        person.getConversationRecords(ofType: .concern).filter { !$0.isResolved }.count
+    }
+    
+    private var unsolvedQuestionsCount: Int {
+        person.getConversationRecords(ofType: .question).filter { !$0.isResolved }.count
+    }
+    
+    private var unsolvedPromisesCount: Int {
+        person.getConversationRecords(ofType: .promise).filter { !$0.isResolved }.count
+    }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // 헤더
+        VStack(spacing: 16) {
+            // 대화 기록 헤더
             HStack {
-                Image(systemName: "waveform")
-                    .foregroundStyle(.blue)
-                Text("음성 기록")
-                    .font(.headline)
+                Text("대화 기록")
+                    .font(.body)
+                
                 Spacer()
-                Text(formatTime(player.duration > 0 ? player.duration : totalDuration))
+                
+                Button {
+                    showingHistory = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.body)
+                        Text("전체 기록 보기")
+                            .font(.body)
+                    }
+                    .foregroundStyle(.blue)
+                }
+            }
+            
+            // 대화 유형 버튼들
+            HStack(spacing: 12) {
+                ConversationTypeButton(
+                    title: ConversationType.concern.title,
+                    icon: ConversationType.concern.systemImage,
+                    color: ConversationType.concern.color,
+                    count: unsolvedConcernsCount,
+                    action: { showingAddConcern = true }
+                )
+                
+                ConversationTypeButton(
+                    title: ConversationType.question.title,
+                    icon: ConversationType.question.systemImage,
+                    color: ConversationType.question.color,
+                    count: unsolvedQuestionsCount,
+                    action: { showingAddQuestion = true }
+                )
+                
+                ConversationTypeButton(
+                    title: ConversationType.promise.title,
+                    icon: ConversationType.promise.systemImage,
+                    color: ConversationType.promise.color,
+                    count: unsolvedPromisesCount,
+                    action: { showingAddPromise = true }
+                )
+            }
+            
+            // 최근 기록들 미리보기 (미해결 항목들)
+            if unsolvedConcernsCount > 0 || unsolvedQuestionsCount > 0 || unsolvedPromisesCount > 0 {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("미해결 항목")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    // 최대 3개까지만 표시
+                    let allUnsolved = getAllUnsolvedRecords()
+                    ForEach(allUnsolved.prefix(3), id: \.id) { record in
+                        ConversationRecordPreviewRow(record: record)
+                    }
+                    
+                    if allUnsolved.count > 3 {
+                        Text("외 \(allUnsolved.count - 3)개 더...")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 8)
+                    }
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+            }
+        }
+        .sheet(isPresented: $showingHistory) {
+            ConversationHistoryView(person: person)
+        }
+        .sheet(isPresented: $showingAddConcern) {
+            AddConversationRecordSheet(person: person, type: .concern)
+        }
+        .sheet(isPresented: $showingAddQuestion) {
+            AddConversationRecordSheet(person: person, type: .question)
+        }
+        .sheet(isPresented: $showingAddPromise) {
+            AddConversationRecordSheet(person: person, type: .promise)
+        }
+    }
+    
+    private func getAllUnsolvedRecords() -> [ConversationRecord] {
+        let concerns = person.getConversationRecords(ofType: .concern).filter { !$0.isResolved }
+        let questions = person.getConversationRecords(ofType: .question).filter { !$0.isResolved }
+        let promises = person.getConversationRecords(ofType: .promise).filter { !$0.isResolved }
+        
+        return (concerns + questions + promises)
+            .sorted { $0.createdDate > $1.createdDate }
+    }
+}
+
+// MARK: - ConversationTypeButton
+struct ConversationTypeButton: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let count: Int
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                ZStack {
+                    Image(systemName: icon)
+                        .font(.title2)
+                        .foregroundStyle(color)
+                    
+                    if count > 0 {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Text("\(count)")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(Color.red))
+                            }
+                            Spacer()
+                        }
+                        .frame(width: 30, height: 30)
+                    }
+                }
+                
+                Text(title)
                     .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(color)
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(color.opacity(0.1))
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - ConversationRecordPreviewRow
+struct ConversationRecordPreviewRow: View {
+    let record: ConversationRecord
+    @Environment(\.modelContext) private var context
+    
+    private var typeColor: Color {
+        return record.type.color
+    }
+    
+    private var typeIcon: String {
+        return record.type.systemImage
+    }
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: typeIcon)
+                .font(.caption)
+                .foregroundStyle(typeColor)
+                .frame(width: 20)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(record.content)
+                    .font(.subheadline)
+                    .lineLimit(2)
+                
+                Text(record.relativeDate)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             
-            // 프로그레스 바
-            VStack(spacing: 8) {
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        // 배경
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(height: 4)
-                            .cornerRadius(2)
+            Spacer()
+            
+            Button {
+                record.isResolved = true
+                try? context.save()
+                
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+            } label: {
+                Image(systemName: "checkmark.circle")
+                    .foregroundStyle(typeColor)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(typeColor.opacity(0.05))
+        .cornerRadius(8)
+    }
+}
+
+// MARK: - ConversationHistoryView
+struct ConversationHistoryView: View {
+    @Environment(\.dismiss) private var dismiss
+    let person: Person
+    
+    enum ConversationFilter: String, CaseIterable {
+        case all = "전체"
+        case concern = "고민"
+        case question = "질문"
+        case promise = "약속"
+        
+        var conversationType: ConversationType? {
+            switch self {
+            case .all: return nil
+            case .concern: return .concern
+            case .question: return .question
+            case .promise: return .promise
+            }
+        }
+        
+        var systemImage: String {
+            switch self {
+            case .all: return "list.bullet"
+            case .concern: return "person.badge.minus"
+            case .question: return "questionmark.circle"
+            case .promise: return "handshake"
+            }
+        }
+        
+        var color: Color {
+            switch self {
+            case .all: return .gray
+            case .concern: return .orange
+            case .question: return .blue
+            case .promise: return .green
+            }
+        }
+        }
+    
+    
+    @State private var selectedFilter: ConversationFilter = .all
+    
+    private var filteredRecords: [ConversationRecord] {
+        let allRecords = getAllConversationRecords()
+        
+        guard let filterType = selectedFilter.conversationType else {
+            return allRecords
+        }
+        
+        return allRecords.filter { $0.type == filterType }
+    }
+    
+    private func getAllConversationRecords() -> [ConversationRecord] {
+        let concerns = person.getConversationRecords(ofType: .concern)
+        let questions = person.getConversationRecords(ofType: .question)
+        let promises = person.getConversationRecords(ofType: .promise)
+        
+        return (concerns + questions + promises)
+            .sorted { $0.createdDate > $1.createdDate }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // 필터 선택
+                VStack(spacing: 12) {
+                    Picker("필터", selection: $selectedFilter) {
+                        ForEach(ConversationFilter.allCases, id: \.self) { filter in
+                            Text(filter.rawValue)
+                                .tag(filter)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    
+                    // 통계 정보
+                    HStack(spacing: 20) {
+                        VStack(spacing: 4) {
+                            Text("\(filteredRecords.count)")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundStyle(selectedFilter.color)
+                            Text("총 기록")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         
-                        // 진행률
-                        Rectangle()
-                            .fill(Color.blue)
-                            .frame(width: progressWidth(geometry: geometry), height: 4)
-                            .cornerRadius(2)
+                        VStack(spacing: 4) {
+                            let unsolvedCount = filteredRecords.filter { !$0.isResolved }.count
+                            Text("\(unsolvedCount)")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.red)
+                            Text("미해결")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         
-                        // 드래그 핸들
-                        Circle()
-                            .fill(Color.blue)
-                            .frame(width: 16, height: 16)
-                            .offset(x: progressWidth(geometry: geometry) - 8)
-                            .gesture(
-                                DragGesture()
-                                    .onChanged { value in
-                                        isDragging = true
-                                        let progress = min(max(0, (value.location.x / geometry.size.width)), 1)
-                                        let seekTime = progress * (player.duration > 0 ? player.duration : totalDuration)
-                                        currentTime = seekTime
-                                    }
-                                    .onEnded { value in
-                                        let progress = min(max(0, (value.location.x / geometry.size.width)), 1)
-                                        let seekTime = progress * (player.duration > 0 ? player.duration : totalDuration)
-                                        player.seek(to: seekTime)
-                                        isDragging = false
-                                    }
-                            )
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.vertical, 12)
+                .background(Color(.systemGroupedBackground))
+                
+                // 기록 목록
+                if filteredRecords.isEmpty {
+                    // 빈 상태
+                    VStack(spacing: 20) {
+                        Image(systemName: selectedFilter.systemImage)
+                            .font(.system(size: 60))
+                            .foregroundStyle(.secondary)
+                        
+                        Text("\(selectedFilter.rawValue) 기록이 없어요")
+                            .font(.headline)
+                        
+                        Text("새로운 \(selectedFilter.rawValue.lowercased()) 기록을 추가해보세요.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        
+                        Button("기록 추가하러 가기") {
+                            dismiss()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(selectedFilter.color)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemGroupedBackground))
+                } else {
+                    List {
+                        ForEach(filteredRecords, id: \.id) { record in
+                            ConversationRecordDetailRow(record: record)
+                        }
                     }
                 }
-                .frame(height: 16)
+            }
+            .navigationTitle("대화 기록")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("완료") { dismiss() }
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: selectedFilter)
+    }
+}
+
+// MARK: - ConversationRecordDetailRow
+struct ConversationRecordDetailRow: View {
+    let record: ConversationRecord
+    @Environment(\.modelContext) private var context
+    @State private var showingEditSheet = false
+    
+    private var typeColor: Color {
+        return record.type.color
+    }
+    
+    private var typeIcon: String {
+        return record.type.systemImage
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // 상태 표시줄
+            VStack {
+                Circle()
+                    .fill(record.isResolved ? Color.green : typeColor)
+                    .frame(width: 8, height: 8)
                 
-                // 시간 표시
+                Rectangle()
+                    .fill((record.isResolved ? Color.green : typeColor).opacity(0.3))
+                    .frame(width: 2)
+                    .frame(maxHeight: .infinity)
+            }
+            .frame(width: 12)
+            
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(formatTime(isDragging ? currentTime : player.currentTime))
+                    Image(systemName: typeIcon)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 40, alignment: .leading)
+                        .foregroundStyle(typeColor)
+                    
+                    Text(record.type.title)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(typeColor)
+                    
+                    if record.isResolved {
+                        Text("해결됨")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.green))
+                            .foregroundStyle(.white)
+                    }
+                    
+                    if record.priority == .high || record.priority == .urgent {
+                        Text(record.priority.emoji)
+                            .font(.caption2)
+                    }
                     
                     Spacer()
-                    
-                    Text(formatTime(player.duration > 0 ? player.duration : totalDuration))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 40, alignment: .trailing)
                 }
-            }
-            
-            // 컨트롤 버튼들
-            HStack {
-                // 15초 뒤로
-                Button {
-                    player.skip(by: -15)
-                } label: {
-                    Image(systemName: "gobackward.15")
-                        .font(.title2)
-                        .foregroundStyle(.blue)
-                }
-                .disabled(!player.isReady)
                 
-                Spacer()
+                Text(record.content)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
                 
-                // 재생/일시정지
-                Button {
-                    if isPlaying {
-                        player.pause()
-                    } else {
-                        player.play()
-                    }
-                    isPlaying.toggle()
-                } label: {
-                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 50))
-                        .foregroundStyle(.blue)
-                }
-                .disabled(!player.isReady)
-                
-                Spacer()
-                
-                // 15초 앞으로
-                Button {
-                    player.skip(by: 15)
-                } label: {
-                    Image(systemName: "goforward.15")
-                        .font(.title2)
-                        .foregroundStyle(.blue)
-                }
-                .disabled(!player.isReady)
-            }
-            .padding(.horizontal)
-            
-            // 재생 속도 조절
-            HStack {
-                Text("재생 속도:")
+                Text(record.relativeDate)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 
-                Spacer()
+                if let resolvedDate = record.resolvedDate {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                        Text("해결일: \(resolvedDate.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            
+            VStack {
+                if !record.isResolved {
+                    Button {
+                        record.isResolved = true
+                        record.resolvedDate = Date()
+                        try? context.save()
+                        
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                    } label: {
+                        Image(systemName: "checkmark.circle")
+                            .font(.title3)
+                            .foregroundStyle(.green)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button {
+                        record.isResolved = false
+                        record.resolvedDate = nil
+                        try? context.save()
+                        
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward.circle")
+                            .font(.title3)
+                            .foregroundStyle(typeColor)
+                    }
+                    .buttonStyle(.plain)
+                }
                 
-                HStack(spacing: 8) {
-                    ForEach([0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { speed in
-                        Button {
-                            player.setPlaybackRate(Float(speed))
-                        } label: {
-                            Text("\(speed, specifier: "%.2g")x")
-                                .font(.caption)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    player.playbackRate == Float(speed) 
-                                        ? Color.blue 
-                                        : Color.gray.opacity(0.2)
-                                )
-                                .foregroundStyle(
-                                    player.playbackRate == Float(speed) 
-                                        ? .white 
-                                        : .primary
-                                )
-                                .cornerRadius(12)
+                Button(role: .destructive) {
+                    withAnimation {
+                        context.delete(record)
+                        try? context.save()
+                    }
+                } label: {
+                    Image(systemName: "trash.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
+        .sheet(isPresented: $showingEditSheet) {
+            EditConversationRecordSheet(record: record)
+        }
+    }
+}
+
+// MARK: - AddConversationRecordSheet
+struct AddConversationRecordSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    
+    @Bindable var person: Person
+    let type: ConversationType
+    
+    @State private var content = ""
+    @State private var priority: ConversationPriority = .normal
+    
+    private var typeColor: Color {
+        return type.color
+    }
+    
+    private var placeholder: String {
+        switch type {
+        case .concern: return "이 사람이 최근에 고민하고 있는 것은?"
+        case .question: return "이 사람에게 받은 질문이나 요청사항은?"
+        case .promise: return "아직 지키지 못한 약속이나 해야 할 일은?"
+        case .update: return "이 사람의 최근 근황은?"
+        case .feedback: return "이 사람에게 받은 피드백은?"
+        case .request: return "이 사람의 요청사항은?"
+        case .achievement: return "이 사람의 성취나 좋은 소식은?"
+        case .problem: return "이 사람이 겪고 있는 문제는?"
+        }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("새 \(type.title) 추가") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: typeIcon)
+                                .font(.title2)
+                                .foregroundStyle(typeColor)
+                            
+                            VStack(alignment: .leading) {
+                                Text("\(type.title) 기록")
+                                    .font(.headline)
+                                Text("\(person.name)님과 관련된 \(type.title)을 기록해주세요")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-                        .disabled(!player.isReady)
+                        .padding(.bottom, 8)
+                        
+                        TextField(placeholder, text: $content, axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(3...8)
+                    }
+                }
+                
+                Section("우선순위") {
+                    Picker("우선순위", selection: $priority) {
+                        ForEach(ConversationPriority.allCases, id: \.self) { priority in
+                            HStack {
+                                Text(priority.emoji)
+                                Text(priority.title)
+                            }
+                            .tag(priority)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+                
+                if !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Section("미리보기") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: typeIcon)
+                                    .foregroundStyle(typeColor)
+                                Text(type.title)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(typeColor)
+                                
+                                if priority != .normal {
+                                    Text(priority.emoji)
+                                }
+                            }
+                            
+                            Text(content)
+                                .font(.body)
+                                .padding()
+                                .background(typeColor.opacity(0.1))
+                                .cornerRadius(8)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("\(type.title) 추가")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        addRecord()
+                        dismiss()
+                    }
+                    .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+    
+    private var typeIcon: String {
+        return type.systemImage
+    }
+    
+    private func addRecord() {
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedContent.isEmpty else { return }
+        
+        let record = person.addConversationRecord(
+            type: type,
+            content: trimmedContent,
+            priority: priority,
+            date: Date()
+        )
+        context.insert(record)
+        
+        do {
+            try context.save()
+            print("✅ \(type.title) 기록 추가 완료")
+            
+            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+            impactFeedback.impactOccurred()
+        } catch {
+            print("❌ \(type.title) 기록 추가 실패: \(error)")
+        }
+    }
+}
+
+// MARK: - EditConversationRecordSheet
+struct EditConversationRecordSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    
+    @Bindable var record: ConversationRecord
+    @State private var tempContent: String
+    @State private var tempPriority: ConversationPriority
+    
+    init(record: ConversationRecord) {
+        self.record = record
+        self._tempContent = State(initialValue: record.content)
+        self._tempPriority = State(initialValue: record.priority)
+    }
+    
+    private var typeColor: Color {
+        return record.type.color
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("\(record.type.title) 편집") {
+                    TextField("내용", text: $tempContent, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(3...8)
+                }
+                
+                Section("우선순위") {
+                    Picker("우선순위", selection: $tempPriority) {
+                        ForEach(ConversationPriority.allCases, id: \.self) { priority in
+                            HStack {
+                                Text(priority.emoji)
+                                Text(priority.title)
+                            }
+                            .tag(priority)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+                
+                Section("상태") {
+                    Toggle("해결됨", isOn: $record.isResolved)
+                        .tint(typeColor)
+                }
+            }
+            .navigationTitle("\(record.type.title) 편집")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        saveChanges()
+                        dismiss()
                     }
                 }
             }
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-        .onAppear {
-            player.loadAudio(from: audioURL)
-        }
-        .onDisappear {
-            player.stop()
-        }
-        .onReceive(player.timePublisher) { time in
-            if !isDragging {
-                currentTime = time
-            }
-        }
-        .onReceive(player.didFinishPlaying) {
-            isPlaying = false
-        }
     }
     
-    private func progressWidth(geometry: GeometryProxy) -> CGFloat {
-        let duration = player.duration > 0 ? player.duration : totalDuration
-        guard duration > 0 else { return 0 }
+    private func saveChanges() {
+        record.content = tempContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        record.priority = tempPriority
         
-        let time = isDragging ? currentTime : player.currentTime
-        let progress = time / duration
-        return geometry.size.width * progress
-    }
-    
-    private func formatTime(_ time: TimeInterval) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-}
-
-// MARK: - AudioPlayer ObservableObject
-class AudioPlayer: NSObject, ObservableObject {
-    private var audioPlayer: AVAudioPlayer?
-    private var timer: Timer?
-    
-    @Published var isReady = false
-    @Published var isPlaying = false
-    @Published var currentTime: TimeInterval = 0
-    @Published var duration: TimeInterval = 0
-    @Published var playbackRate: Float = 1.0
-    
-    let timePublisher = PassthroughSubject<TimeInterval, Never>()
-    let didFinishPlaying = PassthroughSubject<Void, Never>()
-    
-    override init() {
-        super.init()
-        setupAudioSession()
-    }
-    
-    private func setupAudioSession() {
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            print("Failed to setup audio session: \(error)")
+        if record.isResolved && record.resolvedDate == nil {
+            record.resolvedDate = Date()
+        } else if !record.isResolved {
+            record.resolvedDate = nil
         }
-    }
-    
-    func loadAudio(from url: URL) {
+        
         do {
-            audioPlayer = try AVAudioPlayer(contentsOf: url)
-            audioPlayer?.delegate = self
-            audioPlayer?.prepareToPlay()
-            audioPlayer?.enableRate = true
+            try context.save()
+            print("✅ \(record.type.title) 기록 수정 완료")
             
-            duration = audioPlayer?.duration ?? 0
-            isReady = true
+            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+            impactFeedback.impactOccurred()
         } catch {
-            print("Failed to load audio: \(error)")
-            isReady = false
+            print("❌ \(record.type.title) 기록 수정 실패: \(error)")
         }
     }
-    
-    func play() {
-        guard let player = audioPlayer else { return }
-        player.play()
-        isPlaying = true
-        startTimer()
-    }
-    
-    func pause() {
-        audioPlayer?.pause()
-        isPlaying = false
-        stopTimer()
-    }
-    
-    func stop() {
-        audioPlayer?.stop()
-        audioPlayer?.currentTime = 0
-        currentTime = 0
-        isPlaying = false
-        stopTimer()
-    }
-    
-    func seek(to time: TimeInterval) {
-        guard let player = audioPlayer else { return }
-        player.currentTime = time
-        currentTime = time
-    }
-    
-    func skip(by seconds: TimeInterval) {
-        guard let player = audioPlayer else { return }
-        let newTime = max(0, min(duration, player.currentTime + seconds))
-        seek(to: newTime)
-    }
-    
-    func setPlaybackRate(_ rate: Float) {
-        audioPlayer?.rate = rate
-        playbackRate = rate
-    }
-    
-    private func startTimer() {
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-            self.currentTime = self.audioPlayer?.currentTime ?? 0
-            self.timePublisher.send(self.currentTime)
-        }
-    }
-    
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
-    }
 }
-
-// MARK: - AVAudioPlayerDelegate
-extension AudioPlayer: AVAudioPlayerDelegate {
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        isPlaying = false
-        currentTime = 0
-        stopTimer()
-        didFinishPlaying.send()
-    }
-    
-    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-        print("Audio player decode error: \(error?.localizedDescription ?? "Unknown error")")
-        isPlaying = false
-        stopTimer()
-    }
-}
-
-
 
 // MARK: - RelationshipAnalysisCard
 struct RelationshipAnalysisCard: View {
@@ -3333,3 +3050,116 @@ struct MetricRow: View {
     }
 }
 
+// MARK: - Helper Views
+struct KnowledgeItemView: View {
+    let personAction: PersonAction
+    let action: RapportAction
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+                
+                Text(action.title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                Text("정보")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.blue.opacity(0.2)))
+                    .foregroundStyle(.blue)
+            }
+            
+            Text(personAction.context)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+            
+            if let completedDate = personAction.completedDate {
+                Text("완료: \(completedDate.formatted(date: .abbreviated, time: .omitted))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct MeetingRecordRowView: View {
+    let record: MeetingRecord
+    
+    var body: some View {
+        NavigationLink(destination: MeetingRecordDetailView(record: record)) {
+            HStack {
+                Text(record.meetingType.emoji)
+                    .font(.title3)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(record.meetingType.rawValue)
+                        .font(.headline)
+                    Text(record.date.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    if !record.transcribedText.isEmpty {
+                        Text(record.transcribedText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct EditableConversationField: View {
+    let title: String
+    let placeholder: String
+    @Binding var text: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField(placeholder, text: $text, axis: .vertical)
+                .lineLimit(2...4)
+                .textFieldStyle(.roundedBorder)
+        }
+    }
+}
+
+struct ConversationCard: View {
+    let icon: String
+    let title: String
+    let content: String?
+    let color: Color
+    
+    var body: some View {
+        if let content = content, !content.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.caption)
+                        .foregroundStyle(color)
+                    Text(title)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(color)
+                }
+                Text(content)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(color.opacity(0.1))
+                    .cornerRadius(8)
+            }
+        }
+    }
+}

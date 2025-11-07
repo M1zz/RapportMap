@@ -8,7 +8,9 @@ import SwiftUI
 final class ConversationRecord {
     // MARK: - 기본 정보
     var id: UUID                        // 고유 식별자
-    var date: Date                      // 대화/상태 기록 날짜
+    var createdDate: Date               // 대화/상태 기록 생성 날짜
+    var date: Date                      // 대화/상태 발생 날짜 (실제 대화 날짜)
+    var resolvedDate: Date?             // 해결 날짜 (해결되었을 때의 날짜)
     var type: ConversationType          // 대화 타입 (질문, 고민, 약속 등)
     var content: String                 // 대화 내용 또는 상태 정보
     var notes: String?                  // 추가 메모
@@ -25,7 +27,9 @@ final class ConversationRecord {
     /// ConversationRecord 객체 생성자
     init(
         id: UUID = UUID(),
+        createdDate: Date = Date(),
         date: Date = Date(),
+        resolvedDate: Date? = nil,
         type: ConversationType,
         content: String,
         notes: String? = nil,
@@ -34,7 +38,9 @@ final class ConversationRecord {
         tags: [String] = []
     ) {
         self.id = id
+        self.createdDate = createdDate
         self.date = date
+        self.resolvedDate = resolvedDate
         self.type = type
         self.content = content
         self.notes = notes
@@ -163,18 +169,18 @@ extension ConversationRecord {
     var relativeDate: String {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: .now)
+        return formatter.localizedString(for: createdDate, relativeTo: .now)
     }
     
     /// 최근 기록인지 여부 (7일 이내)
     var isRecent: Bool {
-        let daysSince = Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
+        let daysSince = Calendar.current.dateComponents([.day], from: createdDate, to: Date()).day ?? 0
         return daysSince <= 7
     }
     
     /// 오래된 기록인지 여부 (30일 이상)
     var isOld: Bool {
-        let daysSince = Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
+        let daysSince = Calendar.current.dateComponents([.day], from: createdDate, to: Date()).day ?? 0
         return daysSince >= 30
     }
     

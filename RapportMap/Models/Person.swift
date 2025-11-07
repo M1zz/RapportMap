@@ -16,7 +16,7 @@ final class Person {
     var lastMentoring: Date?            // 마지막 멘토링 날짜 (InteractionRecord에서 자동 계산)
     var lastMeal: Date?                 // 마지막 식사 날짜 (InteractionRecord에서 자동 계산)
     var lastContact: Date?              // 마지막 연락 날짜 (InteractionRecord에서 자동 계산)
-    var isNeglected: Bool               // 소홀함 플래그 (자동 계산됨)
+    // isNeglected는 computed property로 자동 계산됨
     
     // MARK: - 관계 진행 단계
     var currentPhase: ActionPhase       // 현재 관계 단계 (표면적/개인적/깊이있는 등)
@@ -79,7 +79,6 @@ final class Person {
         lastMentoring: Date? = nil,
         lastMeal: Date? = nil,
         lastContact: Date? = nil,
-        isNeglected: Bool = false,
         currentPhase: ActionPhase = .surface,
         relationshipStartDate: Date = Date(),
         preferredName: String = "",
@@ -102,7 +101,6 @@ final class Person {
         self.lastMentoring = lastMentoring
         self.lastMeal = lastMeal
         self.lastContact = lastContact
-        self.isNeglected = isNeglected
         
         // 관계 진행 정보
         self.currentPhase = currentPhase
@@ -217,17 +215,12 @@ extension Person {
         let unsolvedPenalty = min(Double(unresolvedConversations) * 2.0, 12)
         totalScore -= unsolvedPenalty
         
-        // 5. 소홀함 플래그 감점: 시스템이 판단한 관계 소홀 (-8점)
-        if isNeglected {
-            totalScore -= 8
-        }
-        
-        // 6. 관계 지속 기간 보너스: 오래된 관계에 대한 가산점 (0-15점)
+        // 5. 관계 지속 기간 보너스: 오래된 관계에 대한 가산점 (0-15점)
         let relationshipDuration = calendar.dateComponents([.day], from: relationshipStartDate, to: now).day ?? 0
         let durationBonus = min(Double(relationshipDuration) / 20.0 * 15, 15) // 20일당 최대 15점
         totalScore += durationBonus
         
-        // 7. 최근 상호작용 보너스: 3일 내 활발한 소통에 대한 추가 점수 (0-10점)
+        // 6. 최근 상호작용 보너스: 3일 내 활발한 소통에 대한 추가 점수 (0-10점)
         let recentInteractionBonus = calculateRecentInteractionBonus()
         totalScore += recentInteractionBonus
         
@@ -354,7 +347,7 @@ extension Person {
     }
     
     /// 관계 상태를 자동으로 업데이트하는 메인 메서드
-    /// 계산된 점수를 바탕으로 관계 상태를 갱신하고, 소홀함 플래그도 관리
+    /// 계산된 점수를 바탕으로 관계 상태를 갱신
     /// 상태 변경 시 콘솔에 로그를 출력하여 디버깅 지원
     func updateRelationshipState() {
         let calculatedState = calculateRelationshipState()
@@ -366,20 +359,9 @@ extension Person {
             state = calculatedState
             
             print("🔄 [RelationshipState] \(name)님과의 관계 상태 변경: \(oldState.rawValue) → \(calculatedState.rawValue) (점수: \(Int(currentScore)))")
-            
-            // 관계가 개선되어 멀어짐 상태를 벗어난 경우 소홀함 플래그 해제
-            if calculatedState != .distant && isNeglected {
-                isNeglected = false
-                print("✅ [RelationshipState] \(name)님과의 관계가 개선되어 소홀함 플래그를 해제했습니다")
-            }
-            // 관계가 크게 악화된 경우에만 소홀함 플래그 설정 (기존보다 완화된 조건)
-            else if calculatedState == .distant && oldState == .close && currentScore < 30 {
-                isNeglected = true
-                print("⚠️ [RelationshipState] \(name)님과의 관계가 많이 소홀해졌습니다")
-            }
         } else {
             // 상태 변경은 없지만 현재 점수를 로그로 출력
-            print("📊 [RelationshipState] \(name)님 관계 점수: \(Int(currentScore)) (\(calculatedState.rawValue))")
+            print("📊 [RelationshipState] \(name)님 관계 점수: \(Int(currentScore)) (\(calculatedState.rawValue)), 소홀함: \(isNeglected ? "예" : "아니오")")
         }
     }
     
@@ -930,6 +912,150 @@ extension Person {
             return "총 \(total)개 기록 (모두 해결됨)"
         } else {
             return "총 \(total)개 기록 (\(unresolved)개 미해결)"
+        }
+    }
+    
+    /// 소홀함 상태 (자동 계산됨)
+    /// 고민이 방치되거나, 중요한 액션이 놓치거나, 오래 연락이 없는 경우 true
+        var isNeglected: Bool {
+        let now = Date()
+        let calendar = Calendar.current
+        
+        // 1. 고민이 있는데 1주일 이상 방치된 경우
+        let unresolvedConcerns = conversationRecords.filter { 
+            $0.type == .concern && !$0.isResolved 
+        }
+        for concern in unresolvedConcerns {
+            let daysSinceConcern = calendar.dateComponents([.day], from: concern.createdDate, to: now).day ?? 0
+            if daysSinceConcern >= 7 {
+                return true
+            }
+        }
+        
+        // 2. 긴급/높은 우선순위 약속이 3일 이상 방치된 경우
+        let highPriorityPromises = conversationRecords.filter { 
+            $0.type == .promise && !$0.isResolved && 
+            ($0.priority == .urgent || $0.priority == .high)
+        }
+        for promise in highPriorityPromises {
+            let daysSincePromise = calendar.dateComponents([.day], from: promise.createdDate, to: now).day ?? 0
+            if daysSincePromise >= 3 {
+                return true
+            }
+        }
+        
+        // 3. 중요 액션이 리마인더 날짜를 1일 이상 지난 경우
+        let today = calendar.startOfDay(for: now)
+        let overdueCriticalActions = actions.filter { action in
+            guard !action.isCompleted,
+                  action.action?.type == .critical,
+                  let reminderDate = action.reminderDate else {
+                return false
+            }
+            let reminderDay = calendar.startOfDay(for: reminderDate)
+            return reminderDay < today
+        }
+        if !overdueCriticalActions.isEmpty {
+            return true
+        }
+        
+        // 4. 마지막 상호작용이 3주 이상 지난 경우
+        let recentInteractionDate = [lastContact, lastMeal, lastMentoring]
+            .compactMap { $0 }
+            .max() ?? relationshipStartDate
+        let daysSinceLastInteraction = calendar.dateComponents([.day], from: recentInteractionDate, to: now).day ?? 0
+        if daysSinceLastInteraction >= 21 {
+            return true
+        }
+        
+        // 5. 미해결 질문이 5개 이상 누적된 경우
+        let unresolvedQuestions = conversationRecords.filter { 
+            $0.type == .question && !$0.isResolved 
+        }.count
+        if unresolvedQuestions >= 5 {
+            return true
+        }
+        
+        return false
+    }
+    
+    /// 소홀함의 이유를 설명하는 텍스트
+    var neglectedReason: String {
+        if !isNeglected {
+            return "관계가 잘 관리되고 있습니다. 계속 이런 상태를 유지해보세요!"
+        }
+        
+        let now = Date()
+        let calendar = Calendar.current
+        var reasons: [String] = []
+        
+        // 1. 고민 방치 체크
+        let unresolvedConcerns = conversationRecords.filter { 
+            $0.type == .concern && !$0.isResolved 
+        }
+        let oldConcerns = unresolvedConcerns.filter { concern in
+            let daysSince = calendar.dateComponents([.day], from: concern.createdDate, to: now).day ?? 0
+            return daysSince >= 7
+        }
+        if !oldConcerns.isEmpty {
+            reasons.append("🧠 \(oldConcerns.count)개의 고민이 1주일 이상 방치됨")
+        }
+        
+        // 2. 높은 우선순위 약속 방치 체크
+        let highPriorityPromises = conversationRecords.filter { 
+            $0.type == .promise && !$0.isResolved && 
+            ($0.priority == .urgent || $0.priority == .high)
+        }
+        let oldPromises = highPriorityPromises.filter { promise in
+            let daysSince = calendar.dateComponents([.day], from: promise.createdDate, to: now).day ?? 0
+            return daysSince >= 3
+        }
+        if !oldPromises.isEmpty {
+            reasons.append("🤝 중요한 약속 \(oldPromises.count)개가 3일 이상 방치됨")
+        }
+        
+        // 3. 중요 액션 놓침 체크
+        let today = calendar.startOfDay(for: now)
+        let overdueCriticalActions = actions.filter { action in
+            guard !action.isCompleted,
+                  action.action?.type == .critical,
+                  let reminderDate = action.reminderDate else {
+                return false
+            }
+            let reminderDay = calendar.startOfDay(for: reminderDate)
+            let daysPastDue = calendar.dateComponents([.day], from: reminderDay, to: today).day ?? 0
+            return daysPastDue > 0
+        }
+        if !overdueCriticalActions.isEmpty {
+            let maxOverdue = overdueCriticalActions.compactMap { action -> Int? in
+                guard let reminderDate = action.reminderDate else { return nil }
+                let reminderDay = calendar.startOfDay(for: reminderDate)
+                return calendar.dateComponents([.day], from: reminderDay, to: today).day
+            }.max() ?? 0
+            reasons.append("⚠️ 중요 액션 \(overdueCriticalActions.count)개가 최대 \(maxOverdue)일 지남")
+        }
+        
+        // 4. 장기간 연락 없음 체크
+        let recentInteractionDate = [lastContact, lastMeal, lastMentoring]
+            .compactMap { $0 }
+            .max() ?? relationshipStartDate
+        let daysSinceLastInteraction = calendar.dateComponents([.day], from: recentInteractionDate, to: now).day ?? 0
+        if daysSinceLastInteraction >= 21 {
+            reasons.append("📞 마지막 상호작용이 \(daysSinceLastInteraction)일 전")
+        }
+        
+        // 5. 미해결 질문 누적 체크
+        let unresolvedQuestions = conversationRecords.filter { 
+            $0.type == .question && !$0.isResolved 
+        }.count
+        if unresolvedQuestions >= 5 {
+            reasons.append("❓ 미해결 질문이 \(unresolvedQuestions)개 누적됨")
+        }
+        
+        if reasons.isEmpty {
+            return "관계 관리에 약간의 주의가 필요합니다."
+        } else {
+            return reasons.joined(separator: "\n")
         }
     }
     

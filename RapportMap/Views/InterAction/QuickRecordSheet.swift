@@ -19,7 +19,6 @@ struct QuickRecordSheet: View {
     @State private var receivedQuestions: String = ""
     @State private var unresolvedPromises: String = ""
     @State private var unansweredCount: Int = 0
-    @State private var isNeglected: Bool = false
     @State private var lastContact: Date?
     @State private var hasContactDate: Bool = false
     
@@ -30,7 +29,6 @@ struct QuickRecordSheet: View {
         self._receivedQuestions = State(initialValue: person.allReceivedQuestions.first ?? "")
         self._unresolvedPromises = State(initialValue: person.currentUnresolvedPromises.first ?? "")
         self._unansweredCount = State(initialValue: person.currentUnansweredCount)
-        self._isNeglected = State(initialValue: person.isNeglected)
         self._lastContact = State(initialValue: person.lastContact)
         self._hasContactDate = State(initialValue: person.lastContact != nil)
     }
@@ -90,7 +88,14 @@ struct QuickRecordSheet: View {
                         Text("미해결 대화: \(unansweredCount)개")
                     }
                     
-                    Toggle("관계가 소홀해짐", isOn: $isNeglected)
+                    // 소홀함 상태는 자동으로 계산되어 표시
+                    if person.isNeglected {
+                        HStack {
+                            Text("⚠️")
+                            Text("관계가 소홀해짐")
+                                .foregroundStyle(.orange)
+                        }
+                    }
                 }
                 
                 Section(header: Text("🧠 최근의 고민"), footer: Text("예: 이직 고민, 건강 문제, 인간관계 등")
@@ -118,7 +123,7 @@ struct QuickRecordSheet: View {
                 }
                 
                 // 미리보기 섹션
-                if !recentConcerns.isEmpty || !receivedQuestions.isEmpty || !unresolvedPromises.isEmpty || unansweredCount > 0 || isNeglected {
+                if !recentConcerns.isEmpty || !receivedQuestions.isEmpty || !unresolvedPromises.isEmpty || unansweredCount > 0 {
                     Section("📋 기록 미리보기") {
                         VStack(alignment: .leading, spacing: 12) {
                             if !recentConcerns.isEmpty {
@@ -138,17 +143,6 @@ struct QuickRecordSheet: View {
                                     Text("💬")
                                         .font(.caption)
                                     Text("미해결 대화 \(unansweredCount)개")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(Color.orange)
-                                }
-                            }
-                            
-                            if isNeglected {
-                                HStack(spacing: 8) {
-                                    Text("⚠️")
-                                        .font(.caption)
-                                    Text("관계가 소홀해짐")
                                         .font(.caption)
                                         .fontWeight(.medium)
                                         .foregroundStyle(Color.orange)
@@ -216,8 +210,7 @@ struct QuickRecordSheet: View {
             context.insert(person.conversationRecords.last!)
         }
         
-        // 소홀함 플래그 저장
-        person.isNeglected = isNeglected
+        // 소홀함 상태는 자동으로 계산됨 (computed property)
         
         // 연락 날짜 저장
         if hasContactDate {
