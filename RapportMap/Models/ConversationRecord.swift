@@ -94,7 +94,7 @@ enum ConversationType: String, Codable, CaseIterable {
         switch self {
         case .question: return "questionmark.circle"
         case .concern: return "person.badge.minus"
-        case .promise: return "handshake"
+        case .promise: return "hand.raised"
         case .update: return "newspaper"
         case .feedback: return "bubble.left.and.bubble.right"
         case .request: return "hand.raised"

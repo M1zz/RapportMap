@@ -26,102 +26,137 @@ struct RecentInteractionsView: View {
     
     var body: some View {
         VStack(spacing: 16) {
-            // 가로 스크롤 카드들 (최근 6개만)
-            if !sortedInteractions.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(sortedInteractions, id: \.id) { record in
-                            
-                            InteractionRecordCard(
-                                record: record,
-                                onTap: {
-                                    showingEditSheet = true
-                                    // 편집을 위해 record를 설정해야 함
-                                    #warning("카드 눌렀을 때 데이터 나오게 해줘")
-                                }
-                            )
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-                .scrollTargetBehavior(.viewAligned)
-            } else {
-                VStack(spacing: 12) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                    Text("아직 상호작용 기록이 없어요")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-            }
-            
-            // 빠른 액션 버튼들
-            VStack(spacing: 8) {
-                Text("빠른 기록")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                
-                HStack(spacing: 12) {
-                    ForEach(basicTypes, id: \.self) { type in
-                        Button {
-                            // "지금" 기록 후 편집 시트 열기
-                            person.addInteractionRecord(type: type, date: Date())
-                            person.updateRelationshipState()
-                            try? context.save()
-                            
-                            // 햅틱 피드백
-                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                            impactFeedback.impactOccurred()
-                            
-                            // 편집 시트 열기
-                            interactionToEdit = type
-                            showingEditSheet = true
-                        } label: {
-                            VStack(spacing: 4) {
-                                Image(systemName: type.systemImage)
-                                    .font(.body)
-                                Text("지금")
-                                    .font(.body)
-                            }
-                            .foregroundStyle(.blue)
-                            .padding(8)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(8)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    
-                    Button {
-                        showingHistory = true
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "clock.arrow.circlepath")
-                                .font(.body)
-                            Text("전체 기록 보기")
-                                .font(.body)
-                        }
-                        .foregroundStyle(.blue)
-                    }
-                }
-            }
-            .padding()
-            .background(Color(.systemGray6))
-            .cornerRadius(12)
+            recentInteractionsSection
+            quickActionSection
         }
         .sheet(isPresented: $showingEditSheet) {
-            if let interactionType = interactionToEdit,
-               let latestRecord = person.getInteractionRecords(ofType: interactionType).first {
-                EditInteractionRecordSheet(record: latestRecord)
-            }
+            editInteractionSheet
         }
         .sheet(isPresented: $showingHistory) {
             InteractionHistoryView(person: person)
         }
+    }
+    
+    // MARK: - View Components
+    
+    @ViewBuilder
+    private var recentInteractionsSection: some View {
+        if !sortedInteractions.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(sortedInteractions, id: \.id) { record in
+                        InteractionRecordCard(
+                            record: record,
+                            onTap: { handleCardTap(for: record) }
+                        )
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .scrollTargetBehavior(.viewAligned)
+        } else {
+            emptyStateView
+        }
+    }
+    
+    @ViewBuilder
+    private var emptyStateView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text("아직 상호작용 기록이 없어요")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+    
+    @ViewBuilder
+    private var quickActionSection: some View {
+        VStack(spacing: 8) {
+            Text("빠른 기록")
+                .font(.body)
+                .foregroundStyle(.secondary)
+            
+            HStack(spacing: 12) {
+                ForEach(basicTypes, id: \.self) { type in
+                    quickActionButton(for: type)
+                }
+                
+                viewAllRecordsButton
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+    
+    @ViewBuilder
+    private func quickActionButton(for type: InteractionType) -> some View {
+        Button {
+            handleQuickAction(for: type)
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: type.systemImage)
+                    .font(.body)
+                Text("지금")
+                    .font(.body)
+            }
+            .foregroundStyle(.blue)
+            .padding(8)
+            .background(Color.blue.opacity(0.1))
+            .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+    }
+    
+    @ViewBuilder
+    private var viewAllRecordsButton: some View {
+        Button {
+            showingHistory = true
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.body)
+                Text("전체 기록 보기")
+                    .font(.body)
+            }
+            .foregroundStyle(.blue)
+        }
+    }
+    
+    @ViewBuilder
+    private var editInteractionSheet: some View {
+        if let interactionType = interactionToEdit,
+           let latestRecord = person.getInteractionRecords(ofType: interactionType).first {
+            EditInteractionRecordSheet(record: latestRecord)
+        }
+    }
+    
+    // MARK: - Actions
+    
+    private func handleCardTap(for record: InteractionRecord) {
+        interactionToEdit = record.type
+        showingEditSheet = true
+    }
+    
+    private func handleQuickAction(for type: InteractionType) {
+        // 새로운 상호작용 기록 추가
+        person.addInteractionRecord(type: type, date: Date())
+        person.updateRelationshipState()
+        try? context.save()
+        
+        // 햅틱 피드백
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        
+        // 편집 시트 열기
+        interactionToEdit = type
+        showingEditSheet = true
     }
 }
 
@@ -348,7 +383,7 @@ struct InteractionHistoryView: View {
                         if selectedFilter == .all {
                             // 전체 보기: 타입별로 그룹화하여 섹션으로 표시
                             ForEach(groupedRecords, id: \.0) { interactionType, records in
-                                Section(header: SectionHeaderView(type: interactionType)) {
+                                Section(header: ListHeaderView(type: interactionType)) {
                                     ForEach(records, id: \.id) { record in
                                         InteractionRecordRow(record: record)
                                     }
@@ -362,7 +397,7 @@ struct InteractionHistoryView: View {
                                 }
                             } header: {
                                 if let filterType = selectedFilter.interactionType {
-                                    SectionHeaderView(type: filterType)
+                                    ListHeaderView(type: filterType)
                                 }
                             }
                         }
@@ -380,5 +415,22 @@ struct InteractionHistoryView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: selectedFilter)
+    }
+}
+
+// MARK: - SectionHeaderView
+struct ListHeaderView: View {
+    let type: InteractionType
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(type.emoji)
+                .font(.title3)
+            Text(type.title)
+                .font(.headline)
+                .fontWeight(.semibold)
+            Spacer()
+        }
+        .padding(.vertical, 4)
     }
 }
