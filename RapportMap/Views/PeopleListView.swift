@@ -288,7 +288,6 @@ struct PeopleListView: View {
 
 struct PersonCard: View {
     @Bindable var person: Person
-    @State private var showingQuickRecord = false
 
     // 실시간으로 계산되는 완료율
     private var completionRate: Double {
@@ -338,9 +337,6 @@ struct PersonCard: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
         )
-        .sheet(isPresented: $showingQuickRecord) {
-            QuickRecordSheet(person: person)
-        }
     }
     
     // MARK: - View Components
@@ -530,267 +526,7 @@ struct Chip: View {
     }
 }
 
-// MARK: - QuickRecordSheet
-struct QuickRecordSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var context
-    
-    @Bindable var person: Person
-    
-    @State private var recentConcerns: String = ""
-    @State private var receivedQuestions: String = ""
-    @State private var unresolvedPromises: String = ""
-    @State private var unansweredCount: Int = 0
-    @State private var isNeglected: Bool = false
-    @State private var lastContact: Date?
-    @State private var hasContactDate: Bool = false
-    
-    init(person: Person) {
-        self.person = person
-        
-        self._recentConcerns = State(initialValue: person.currentConcerns.first ?? "")
-        self._receivedQuestions = State(initialValue: person.allReceivedQuestions.first ?? "")
-        self._unresolvedPromises = State(initialValue: person.currentUnresolvedPromises.first ?? "")
-        self._unansweredCount = State(initialValue: person.currentUnansweredCount)
-        self._isNeglected = State(initialValue: person.isNeglected)
-        self._lastContact = State(initialValue: person.lastContact)
-        self._hasContactDate = State(initialValue: person.lastContact != nil)
-    }
-    
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    HStack {
-                        Text(person.name)
-                            .font(.title2)
-                            .fontWeight(.bold)
-                        
-                        Spacer()
-                        
-                        Text(person.state.emoji)
-                            .font(.title)
-                    }
-                    .padding(.vertical, 4)
-                }
-                
-                Section("📞 연락 기록") {
-                    Toggle("방금 연락했음", isOn: $hasContactDate)
-                    
-                    if hasContactDate {
-                        DatePicker("연락 시간", selection: Binding(
-                            get: { lastContact ?? Date() },
-                            set: { lastContact = $0 }
-                        ), displayedComponents: [.date, .hourAndMinute])
-                        .datePickerStyle(.compact)
-                        
-                        // 빠른 시간 선택
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
-                            Button("지금") {
-                                lastContact = Date()
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            
-                            Button("1시간 전") {
-                                lastContact = Date().addingTimeInterval(-3600)
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            
-                            Button("오늘 오전") {
-                                lastContact = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date())
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                    }
-                }
-                
-                Section("💬 대화 상태") {
-                    Stepper(value: $unansweredCount, in: 0...20) {
-                        Text("미해결 대화: \(unansweredCount)개")
-                    }
-                    
-                    Toggle("관계가 소홀해짐", isOn: $isNeglected)
-                }
-                
-                Section(header: Text("🧠 최근의 고민"), footer: Text("예: 이직 고민, 건강 문제, 인간관계 등")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)) {
-                    TextField("이 사람이 최근에 고민하고 있는 것은?", text: $recentConcerns, axis: .vertical)
-                        .lineLimit(3...6)
-                        .autocorrectionDisabled(false)
-                }
-                
-                Section(header: Text("❓ 받았던 질문"), footer: Text("예: 추천 요청, 조언 구함, 도움 요청 등")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)) {
-                    TextField("이 사람에게 받은 질문이나 요청사항은?", text: $receivedQuestions, axis: .vertical)
-                        .lineLimit(3...6)
-                        .autocorrectionDisabled(false)
-                }
-                
-                Section(header: Text("🤝 미해결된 약속"), footer: Text("예: 약속한 만남, 전해줄 정보, 도와주기로 한 일 등")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)) {
-                    TextField("아직 지키지 못한 약속이나 해야 할 일은?", text: $unresolvedPromises, axis: .vertical)
-                        .lineLimit(3...6)
-                        .autocorrectionDisabled(false)
-                }
-                
-                // 미리보기 섹션
-                if !recentConcerns.isEmpty || !receivedQuestions.isEmpty || !unresolvedPromises.isEmpty || unansweredCount > 0 || isNeglected {
-                    Section("📋 기록 미리보기") {
-                        VStack(alignment: .leading, spacing: 12) {
-                            if !recentConcerns.isEmpty {
-                                PreviewCard(icon: "🧠", title: "고민", content: recentConcerns, color: .purple)
-                            }
-                            
-                            if !receivedQuestions.isEmpty {
-                                PreviewCard(icon: "❓", title: "질문", content: receivedQuestions, color: .blue)
-                            }
-                            
-                            if !unresolvedPromises.isEmpty {
-                                PreviewCard(icon: "🤝", title: "약속", content: unresolvedPromises, color: .red)
-                            }
-                            
-                            if unansweredCount > 0 {
-                                HStack(spacing: 8) {
-                                    Text("💬")
-                                        .font(.caption)
-                                    Text("미해결 대화 \(unansweredCount)개")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(.orange)
-                                }
-                            }
-                            
-                            if isNeglected {
-                                HStack(spacing: 8) {
-                                    Text("⚠️")
-                                        .font(.caption)
-                                    Text("관계가 소홀해짐")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(.orange)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("대화 기록")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("취소") {
-                        dismiss()
-                    }
-                }
-                
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("저장") {
-                        saveRecord()
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-    
-    private func saveRecord() {
-        // 새로운 대화 기록 시스템을 사용하여 저장
-        
-        // 고민사항 저장
-        let trimmedConcerns = recentConcerns.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedConcerns.isEmpty {
-            let _ = person.addConversationRecord(
-                type: .concern,
-                content: trimmedConcerns,
-                priority: .normal,
-                date: Date()
-            )
-            context.insert(person.conversationRecords.last!)
-        }
-        
-        // 받은 질문 저장
-        let trimmedQuestions = receivedQuestions.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedQuestions.isEmpty {
-            let _ = person.addConversationRecord(
-                type: .question,
-                content: trimmedQuestions,
-                priority: .normal,
-                date: Date()
-            )
-            context.insert(person.conversationRecords.last!)
-        }
-        
-        // 미해결 약속 저장
-        let trimmedPromises = unresolvedPromises.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedPromises.isEmpty {
-            let _ = person.addConversationRecord(
-                type: .promise,
-                content: trimmedPromises,
-                priority: .high,
-                date: Date()
-            )
-            context.insert(person.conversationRecords.last!)
-        }
-        
-        // 소홀함 플래그 저장
-        person.isNeglected = isNeglected
-        
-        // 연락 날짜 저장
-        if hasContactDate {
-            person.lastContact = lastContact
-        }
-        
-        // 관계 상태 업데이트
-        person.updateRelationshipState()
-        
-        // 데이터베이스 저장
-        do {
-            try context.save()
-            print("✅ \(person.name)님의 대화 기록 저장 완료")
-            
-            // 햅틱 피드백
-            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-            impactFeedback.impactOccurred()
-        } catch {
-            print("❌ 대화 기록 저장 실패: \(error)")
-        }
-    }
-}
 
-// MARK: - PreviewCard (Helper)
-struct PreviewCard: View {
-    let icon: String
-    let title: String
-    let content: String
-    let color: Color
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(icon)
-                    .font(.caption)
-                Text(title)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(color)
-            }
-            
-            Text(content)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(color.opacity(0.1))
-        .cornerRadius(8)
-    }
-}
 
 private func relative(_ date: Date) -> String {
     let formatter = RelativeDateTimeFormatter()
@@ -808,6 +544,7 @@ struct PersonDetailView: View {
     @State private var showingInteractionEdit = false
     @State private var selectedInteractionType: InteractionType?
     @State private var isMeetingRecordsExpanded = true
+    @State private var showingQuickRecord = false
     
     // 대화/상태 입력을 위한 State 변수들
     @State private var newConcern = ""
@@ -857,6 +594,9 @@ struct PersonDetailView: View {
                let latestRecord = person.getInteractionRecords(ofType: selectedType).first {
                 EditInteractionRecordSheet(record: latestRecord)
             }
+        }
+        .sheet(isPresented: $showingQuickRecord) {
+            QuickRecordSheet(person: person)
         }
     }
     
@@ -1080,6 +820,32 @@ struct PersonDetailView: View {
     @ViewBuilder
     private var conversationStateSection: some View {
         Section("대화/상태") {
+            // 빠른 입력 버튼 추가
+            Button {
+                showingQuickRecord = true
+            } label: {
+                HStack {
+                    Image(systemName: "bolt.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("빠른 대화 기록")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text("고민, 질문, 약속을 한번에 입력")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "arrow.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 8)
+            }
+            
+            Divider()
+            
             // 현재 미해결 대화 수 표시
             HStack {
                 Text("미해결 대화:")
@@ -3019,340 +2785,6 @@ struct EmptyPeopleView: View {
     PeopleListView()
 }
 
-// MARK: - FilterOptions
-@Observable
-class FilterOptions {
-    var selectedStates: Set<RelationshipState> = []
-    var showNeglectedOnly = false
-    var showWithIncompleteActionsOnly = false
-    var showWithCriticalActionsOnly = false
-    var lastContactDays: Int? = nil
-    var includeNeverContacted = true
-    
-    var hasActiveFilters: Bool {
-        !selectedStates.isEmpty ||
-        showNeglectedOnly ||
-        showWithIncompleteActionsOnly ||
-        showWithCriticalActionsOnly ||
-        lastContactDays != nil
-    }
-    
-    func reset() {
-        selectedStates.removeAll()
-        showNeglectedOnly = false
-        showWithIncompleteActionsOnly = false
-        showWithCriticalActionsOnly = false
-        lastContactDays = nil
-        includeNeverContacted = true
-    }
-}
-
-// MARK: - PeopleFilterView
-struct PeopleFilterView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Binding var filterOptions: FilterOptions
-    let peopleCount: Int
-    let filteredCount: Int
-    
-    var body: some View {
-        NavigationStack {
-            Form {
-                // 결과 요약
-                Section {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("전체: \(peopleCount)명")
-                                .font(.headline)
-                            Text("필터링된 결과: \(filteredCount)명")
-                                .font(.subheadline)
-                                .foregroundStyle(filteredCount < peopleCount ? .blue : .secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        if filterOptions.hasActiveFilters {
-                            Button("모두 해제") {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    filterOptions.reset()
-                                }
-                            }
-                            .foregroundStyle(.red)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-                
-                // 관계 상태 필터
-                Section("관계 상태") {
-                    ForEach(RelationshipState.allCases, id: \.self) { state in
-                        HStack {
-                            Text(state.emoji)
-                                .font(.title3)
-                            
-                            Text(state.localizedName)
-                                .font(.body)
-                            
-                            Spacer()
-                            
-                            if filterOptions.selectedStates.contains(state) {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(.blue)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                if filterOptions.selectedStates.contains(state) {
-                                    filterOptions.selectedStates.remove(state)
-                                } else {
-                                    filterOptions.selectedStates.insert(state)
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // 특별 조건 필터
-                Section("특별 조건") {
-                    Toggle("소홀한 관계만 보기", isOn: $filterOptions.showNeglectedOnly)
-                        .tint(.orange)
-                    
-                    Toggle("미완료 액션이 있는 사람만", isOn: $filterOptions.showWithIncompleteActionsOnly)
-                        .tint(.blue)
-                    
-                    Toggle("긴급 액션이 있는 사람만", isOn: $filterOptions.showWithCriticalActionsOnly)
-                        .tint(.red)
-                }
-                
-                // 최근 접촉 기준
-                Section("최근 접촉 기준") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("최근 접촉:")
-                            Spacer()
-                            if let days = filterOptions.lastContactDays {
-                                Text("\(days)일 이내")
-                                    .foregroundStyle(.blue)
-                            } else {
-                                Text("모든 기간")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        
-                        // 빠른 선택 버튼들
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
-                            ForEach([7, 14, 30, 60, 90], id: \.self) { days in
-                                Button {
-                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                        filterOptions.lastContactDays = (filterOptions.lastContactDays == days) ? nil : days
-                                    }
-                                } label: {
-                                    Text("\(days)일")
-                                        .font(.caption)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(
-                                            filterOptions.lastContactDays == days 
-                                                ? Color.blue 
-                                                : Color(.systemGray5)
-                                        )
-                                        .foregroundStyle(
-                                            filterOptions.lastContactDays == days 
-                                                ? .white 
-                                                : .primary
-                                        )
-                                        .cornerRadius(16)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    filterOptions.lastContactDays = nil
-                                }
-                            } label: {
-                                Text("전체")
-                                    .font(.caption)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(
-                                        filterOptions.lastContactDays == nil 
-                                            ? Color.blue 
-                                            : Color(.systemGray5)
-                                    )
-                                    .foregroundStyle(
-                                        filterOptions.lastContactDays == nil 
-                                            ? .white 
-                                            : .primary
-                                    )
-                                    .cornerRadius(16)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        
-                        if filterOptions.lastContactDays != nil {
-                            Toggle("연락 기록이 없는 사람도 포함", isOn: $filterOptions.includeNeverContacted)
-                                .font(.caption)
-                                .tint(.gray)
-                        }
-                    }
-                }
-                
-                // 필터 프리셋
-                Section("빠른 필터") {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            filterOptions.reset()
-                            filterOptions.showNeglectedOnly = true
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle")
-                                .foregroundStyle(.orange)
-                            Text("소홀한 관계들")
-                            Spacer()
-                            Image(systemName: "arrow.right")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .foregroundStyle(.primary)
-                    
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            filterOptions.reset()
-                            filterOptions.showWithCriticalActionsOnly = true
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: "alarm")
-                                .foregroundStyle(.red)
-                            Text("긴급 처리 필요")
-                            Spacer()
-                            Image(systemName: "arrow.right")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .foregroundStyle(.primary)
-                    
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            filterOptions.reset()
-                            filterOptions.lastContactDays = 14
-                            filterOptions.includeNeverContacted = false
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: "clock.badge.exclamationmark")
-                                .foregroundStyle(.blue)
-                            Text("최근 2주간 접촉")
-                            Spacer()
-                            Image(systemName: "arrow.right")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .foregroundStyle(.primary)
-                    
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            filterOptions.reset()
-                            filterOptions.selectedStates.insert(.close)
-                        }
-                    } label: {
-                        HStack {
-                            Text("❤️")
-                                .font(.body)
-                            Text("가까운 관계들")
-                            Spacer()
-                            Image(systemName: "arrow.right")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .foregroundStyle(.primary)
-                }
-            }
-            .navigationTitle("필터 설정")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("완료") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - FlowLayout
-struct FlowLayout: Layout {
-    let spacing: CGFloat
-    
-    init(spacing: CGFloat = 6) {
-        self.spacing = spacing
-    }
-    
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = FlowResult(
-            in: proposal.replacingUnspecifiedDimensions().width,
-            subviews: subviews,
-            spacing: spacing
-        )
-        return result.size
-    }
-    
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = FlowResult(
-            in: bounds.width,
-            subviews: subviews,
-            spacing: spacing
-        )
-        
-        for (index, subview) in subviews.enumerated() {
-            let position = CGPoint(
-                x: bounds.minX + result.positions[index].x,
-                y: bounds.minY + result.positions[index].y
-            )
-            subview.place(at: position, proposal: .unspecified)
-        }
-    }
-    
-    struct FlowResult {
-        let size: CGSize
-        let positions: [CGPoint]
-        
-        init(in maxWidth: CGFloat, subviews: Layout.Subviews, spacing: CGFloat) {
-            var positions: [CGPoint] = []
-            var currentY: CGFloat = 0
-            var currentX: CGFloat = 0
-            var lineHeight: CGFloat = 0
-            var totalHeight: CGFloat = 0
-            
-            for subview in subviews {
-                let subviewSize = subview.sizeThatFits(.unspecified)
-                
-                // 현재 줄에 들어갈 수 없다면 다음 줄로
-                if currentX + subviewSize.width > maxWidth && currentX > 0 {
-                    currentY += lineHeight + spacing
-                    currentX = 0
-                    lineHeight = 0
-                }
-                
-                positions.append(CGPoint(x: currentX, y: currentY))
-                
-                currentX += subviewSize.width + spacing
-                lineHeight = max(lineHeight, subviewSize.height)
-                totalHeight = max(totalHeight, currentY + subviewSize.height)
-            }
-            
-            self.positions = positions
-            self.size = CGSize(width: maxWidth, height: totalHeight)
-        }
-    }
-}
 
 // MARK: - AudioPlayerView
 struct AudioPlayerView: View {
