@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Contacts
 
 // 상세 뷰 탭 정의
 enum PersonDetailTab: Int, CaseIterable {
@@ -32,6 +33,9 @@ struct PersonDetailView: View {
     @State private var selectedInteractionType: InteractionType?
     @State private var isMeetingRecordsExpanded = false
     @State private var showingQuickRecord = false
+    @State private var showingContactPicker = false
+    @State private var isLoadingContact = false
+    @StateObject private var contactsManager = ContactsManager.shared
     @Binding var selectedTab: Int
     
     @Bindable var person: Person
@@ -72,6 +76,17 @@ struct PersonDetailView: View {
         }
         .sheet(isPresented: $showingQuickRecord) {
             QuickRecordSheet(person: person)
+        }
+        .sheet(isPresented: $showingContactPicker) {
+            ContactPicker(isPresented: $showingContactPicker) { contact in
+                // 연락처에서 선택한 정보로 Person의 연락처 업데이트
+                let contactInfo = extractContactInfo(from: contact)
+                if !contactInfo.isEmpty {
+                    person.contact = contactInfo
+                    try? context.save()
+                    print("✅ \(person.name)의 연락처 정보 업데이트됨: \(contactInfo)")
+                }
+            }
         }
     }
     
@@ -312,7 +327,66 @@ struct PersonDetailView: View {
     private var basicInfoSection: some View {
         Section("기본 정보") {
             TextField("이름", text: $person.name)
-            TextField("연락처", text: $person.contact)
+            
+            HStack {
+                TextField("연락처", text: $person.contact)
+                
+                // 연락처가 비어있거나 "연락처 없음"일 때 연락처에서 가져오기 버튼 표시
+                if person.contact.isEmpty || person.contact == "연락처 없음" {
+                    Button {
+                        showingContactPicker = true
+                    } label: {
+                        Image(systemName: "person.crop.circle.badge.plus")
+                            .foregroundStyle(.blue)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+            
+            // 연락처 자동 찾기 버튼 (연락처가 없을 때)
+            if person.contact.isEmpty || person.contact == "연락처 없음" {
+                Button {
+                    Task {
+                        isLoadingContact = true
+                        if let foundContact = await contactsManager.updatePersonContactFromContacts(person) {
+                            await MainActor.run {
+                                person.contact = foundContact
+                                try? context.save()
+                                isLoadingContact = false
+                            }
+                        } else {
+                            await MainActor.run {
+                                isLoadingContact = false
+                            }
+                        }
+                    }
+                } label: {
+                    HStack {
+                        if isLoadingContact {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "magnifyingglass.circle")
+                                .foregroundStyle(.orange)
+                        }
+                        
+                        Text(isLoadingContact ? "연락처 검색 중..." : "iPhone 연락처에서 자동으로 찾기")
+                            .foregroundStyle(.orange)
+                        
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
+                }
+                .disabled(isLoadingContact)
+            }
+            
+            // 에러 표시
+            if let error = contactsManager.lastError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.horizontal)
+            }
         }
     }
     
@@ -473,5 +547,24 @@ struct PersonDetailView: View {
                 }
                 return ($0.action?.order ?? 0) < ($1.action?.order ?? 0)
             }
+    }
+    
+    /// CNContact에서 연락처 정보를 추출하는 헬퍼 메소드
+    private func extractContactInfo(from contact: CNContact) -> String {
+        // 전화번호 우선 (모바일 > 기본 > 첫 번째)
+        let mobilePhone = contact.phoneNumbers.first { $0.label == CNLabelPhoneNumberMobile }
+        let mainPhone = contact.phoneNumbers.first { $0.label == CNLabelPhoneNumberMain }
+        
+        if let mobile = mobilePhone {
+            return mobile.value.stringValue
+        } else if let main = mainPhone {
+            return main.value.stringValue
+        } else if let firstPhone = contact.phoneNumbers.first {
+            return firstPhone.value.stringValue
+        } else if let email = contact.emailAddresses.first {
+            return email.value as String
+        }
+        
+        return ""
     }
 }

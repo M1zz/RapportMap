@@ -285,6 +285,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = RapportMap/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "라포맵";
+				INFOPLIST_KEY_NSContactsUsageDescription = "RapportMap이 연락처에 접근하여 사람을 추가하고 정보를 저장합니다.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "음성 메모를 녹음하여 만남을 기록하기 위해 마이크 권한이 필요합니다.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "녹음된 음성을 텍스트로 변환하여 만남 내용을 기록하기 위해 음성 인식 권한이 필요합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -322,6 +323,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = RapportMap/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "라포맵";
+				INFOPLIST_KEY_NSContactsUsageDescription = "RapportMap이 연락처에 접근하여 사람을 추가하고 정보를 저장합니다.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "음성 메모를 녹음하여 만남을 기록하기 위해 마이크 권한이 필요합니다.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "녹음된 음성을 텍스트로 변환하여 만남 내용을 기록하기 위해 음성 인식 권한이 필요합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

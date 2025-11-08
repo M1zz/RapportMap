@@ -215,6 +215,11 @@ struct PeopleListView: View {
             Button("액션 리셋") {
                 DataSeeder.resetDefaultActions(context: context)
             }
+            Button("연락처에서 가져오기") {
+                Task {
+                    await importFromContacts()
+                }
+            }
         }
     }
     
@@ -391,10 +396,47 @@ struct PeopleListView: View {
 
         try? context.save()
     }
+    
+    /// iPhone 연락처에서 Person들 가져오기
+    private func importFromContacts() async {
+        let contactsManager = ContactsManager.shared
+        let contacts = await contactsManager.fetchAllContacts()
+        
+        await MainActor.run {
+            var importedCount = 0
+            
+            for contact in contacts {
+                let newPerson = contactsManager.createPersonFromContact(contact)
+                
+                // 중복 확인 (이름과 연락처 정보로)
+                let isDuplicate = people.contains { existingPerson in
+                    existingPerson.name == newPerson.name ||
+                    (!newPerson.contact.isEmpty && existingPerson.contact == newPerson.contact)
+                }
+                
+                if !isDuplicate && !newPerson.contact.isEmpty {
+                    context.insert(newPerson)
+                    
+                    // 새 Person에 대한 액션 인스턴스들 생성
+                    DataSeeder.createPersonActionsForNewPerson(person: newPerson, context: context)
+                    importedCount += 1
+                }
+            }
+            
+            do {
+                try context.save()
+                print("✅ iPhone 연락처에서 \(importedCount)명 가져오기 완료")
+            } catch {
+                print("❌ 연락처 가져오기 저장 실패: \(error)")
+            }
+        }
+    }
 }
 
 struct PersonCard: View {
     @Bindable var person: Person
+    @StateObject private var contactsManager = ContactsManager.shared
+    @State private var isInContacts = false
 
     // 실시간으로 계산되는 완료율
     private var completionRate: Double {
@@ -444,6 +486,10 @@ struct PersonCard: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
         )
+        .task {
+            // PersonCard가 나타날 때 iPhone 연락처에 있는지 확인
+            await checkContactsStatus()
+        }
     }
     
     // MARK: - View Components
@@ -470,6 +516,13 @@ struct PersonCard: View {
                 .font(.subheadline)
                 .fontWeight(.medium)
                 .foregroundStyle(person.state.color)
+            
+            // iPhone 연락처 연동 상태 표시
+            if isInContacts {
+                Image(systemName: "person.crop.circle.badge.checkmark")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
         }
     }
     
@@ -619,6 +672,14 @@ struct PersonCard: View {
             }
             
             Spacer()
+        }
+    }
+    
+    // iPhone 연락처에 있는지 확인하는 함수
+    private func checkContactsStatus() async {
+        let contact = await contactsManager.findContact(for: person)
+        await MainActor.run {
+            isInContacts = contact != nil
         }
     }
 }
