@@ -10,6 +10,34 @@ import SwiftData
 import UserNotifications
 import Combine
 
+// MARK: - Filter Case Definition
+
+enum FilterCase: CaseIterable {
+    case searchText
+    case relationshipStates
+    case neglectedStatus
+    case incompleteActions
+    case criticalActions
+    case lastContactDays
+    
+    var description: String {
+        switch self {
+        case .searchText:
+            return "검색 텍스트 필터"
+        case .relationshipStates:
+            return "관계 상태 필터"
+        case .neglectedStatus:
+            return "소홀 상태 필터"
+        case .incompleteActions:
+            return "미완료 액션 필터"
+        case .criticalActions:
+            return "긴급 액션 필터"
+        case .lastContactDays:
+            return "최근 접촉 기준 필터"
+        }
+    }
+}
+
 struct PeopleListView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Person.name) private var people: [Person]
@@ -20,145 +48,234 @@ struct PeopleListView: View {
     
     // 검색 필터링된 사람들
     private var filteredPeople: [Person] {
+        applyFilters(to: people)
+    }
+    
+    // MARK: - Filtering Logic
+    private func applyFilters(to people: [Person]) -> [Person] {
         var result = people
         
-        // 검색 텍스트로 먼저 필터링
-        if !searchText.isEmpty {
-            result = result.filter { person in
-                person.name.localizedCaseInsensitiveContains(searchText) ||
-                person.contact.localizedCaseInsensitiveContains(searchText)
-            }
-        }
-        
-        // 관계 상태 필터
-        if !filterOptions.selectedStates.isEmpty {
-            result = result.filter { person in
-                filterOptions.selectedStates.contains(person.state)
-            }
-        }
-        
-        // 소홀 상태 필터
-        if filterOptions.showNeglectedOnly {
-            result = result.filter { $0.isNeglected }
-        }
-        
-        // 미완료 액션이 있는 사람만
-        if filterOptions.showWithIncompleteActionsOnly {
-            result = result.filter { person in
-                person.actions.contains { !$0.isCompleted }
-            }
-        }
-        
-        // 긴급 액션이 있는 사람만
-        if filterOptions.showWithCriticalActionsOnly {
-            result = result.filter { person in
-                let today = Calendar.current.startOfDay(for: Date())
-                return person.actions.contains { action in
-                    !action.isCompleted &&
-                    action.action?.type == .critical &&
-                    (action.reminderDate ?? Date.distantFuture) <= today
-                }
-            }
-        }
-        
-        // 최근 접촉 기준 필터
-        if let daysSince = filterOptions.lastContactDays {
-            let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysSince, to: Date()) ?? Date()
-            result = result.filter { person in
-                guard let lastContact = person.lastContact else {
-                    return filterOptions.includeNeverContacted
-                }
-                return lastContact >= cutoffDate
-            }
+        // 각 필터 케이스별로 순차적으로 적용
+        for filterCase in FilterCase.allCases {
+            result = applyFilter(filterCase, to: result)
         }
         
         return result
     }
     
-    var body: some View {
-        NavigationStack {
-            Group {
-                if people.isEmpty {
-                    EmptyPeopleView()
-                } else {
-                    List {
-                        ForEach(filteredPeople) { person in
-                            NavigationLink(destination: PersonDetailView(person: person, selectedTab: .constant(0))) {
-                                PersonCard(person: person)
-                            }
-                            .simultaneousGesture(
-                                TapGesture().onEnded {
-                                    // PersonDetailView로 이동할 때 상태 저장
-                                    AppStateManager.shared.selectPerson(person)
-                                }
-                            )
-                        }
-                        .onDelete(perform: delete)
-                    }
-                    .searchable(
-                        text: $searchText,
-                        placement: .navigationBarDrawer(displayMode: .automatic),
-                        prompt: "이름이나 연락처로 검색"
-                    )
-                }
-            }
-            .navigationTitle("관계 지도")
-            .toolbar {
-                // Use navigationBarLeading/trailing for broad iOS compatibility
-                #if DEBUG
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Menu {
-                        Button("샘플 데이터") {
-                            addSampleData()
-                        }
-                        Button("액션 리셋") {
-                            DataSeeder.resetDefaultActions(context: context)
-                        }
-                    } label: {
-                        Text("개발")
-                    }
-                }
-                #endif
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { 
-                        showingFilter = true 
-                    } label: { 
-                        Image(systemName: filterOptions.hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                            .foregroundStyle(filterOptions.hasActiveFilters ? .blue : .primary)
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showingAdd = true } label: { Image(systemName: "plus") }
-                }
-            }
-            .sheet(isPresented: $showingAdd) {
-                AddPersonSheet { name, contact in
-                    let new = Person(name: name, contact: contact)
-                    context.insert(new)
-                    
-                    // 먼저 저장
-                    do {
-                        try context.save()
-                        print("✅ 새 Person 저장 완료: \(name)")
-                        
-                        // 새 Person에 대한 액션 인스턴스들 생성
-                        DataSeeder.createPersonActionsForNewPerson(person: new, context: context)
-                    } catch {
-                        print("❌ 새 Person 저장 실패: \(error)")
-                    }
-                }
-            }
-            .sheet(isPresented: $showingFilter) {
-                PeopleFilterView(filterOptions: $filterOptions, peopleCount: people.count, filteredCount: filteredPeople.count)
-            }
-            .onAppear {
-                // 앱 최초 실행 시 기본 액션 30개 생성
-                DataSeeder.seedDefaultActionsIfNeeded(context: context)
-                
-                // 관계 상태 자동 업데이트 스케줄링
-                RelationshipStateManager.shared.scheduleRelationshipStateCheck(context: context)
+    private func applyFilter(_ filterCase: FilterCase, to people: [Person]) -> [Person] {
+        switch filterCase {
+        case .searchText:
+            return applySearchTextFilter(to: people)
+            
+        case .relationshipStates:
+            return applyRelationshipStatesFilter(to: people)
+            
+        case .neglectedStatus:
+            return applyNeglectedStatusFilter(to: people)
+            
+        case .incompleteActions:
+            return applyIncompleteActionsFilter(to: people)
+            
+        case .criticalActions:
+            return applyCriticalActionsFilter(to: people)
+            
+        case .lastContactDays:
+            return applyLastContactDaysFilter(to: people)
+        }
+    }
+    
+    // MARK: - Individual Filter Methods
+    
+    private func applySearchTextFilter(to people: [Person]) -> [Person] {
+        guard !searchText.isEmpty else { return people }
+        
+        return people.filter { person in
+            person.name.localizedCaseInsensitiveContains(searchText) ||
+            person.contact.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    private func applyRelationshipStatesFilter(to people: [Person]) -> [Person] {
+        guard !filterOptions.selectedStates.isEmpty else { return people }
+        
+        return people.filter { person in
+            filterOptions.selectedStates.contains(person.state)
+        }
+    }
+    
+    private func applyNeglectedStatusFilter(to people: [Person]) -> [Person] {
+        guard filterOptions.showNeglectedOnly else { return people }
+        
+        return people.filter { $0.isNeglected }
+    }
+    
+    private func applyIncompleteActionsFilter(to people: [Person]) -> [Person] {
+        guard filterOptions.showWithIncompleteActionsOnly else { return people }
+        
+        return people.filter { person in
+            person.actions.contains { !$0.isCompleted }
+        }
+    }
+    
+    private func applyCriticalActionsFilter(to people: [Person]) -> [Person] {
+        guard filterOptions.showWithCriticalActionsOnly else { return people }
+        
+        let today = Calendar.current.startOfDay(for: Date())
+        return people.filter { person in
+            person.actions.contains { action in
+                !action.isCompleted &&
+                action.action?.type == .critical &&
+                (action.reminderDate ?? Date.distantFuture) <= today
             }
         }
+    }
+    
+    private func applyLastContactDaysFilter(to people: [Person]) -> [Person] {
+        guard let daysSince = filterOptions.lastContactDays else { return people }
+        
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysSince, to: Date()) ?? Date()
+        return people.filter { person in
+            guard let lastContact = person.lastContact else {
+                return filterOptions.includeNeverContacted
+            }
+            return lastContact >= cutoffDate
+        }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            mainContent
+                .navigationTitle("관계 지도")
+                .toolbar { toolbarContent }
+                .sheet(isPresented: $showingAdd) { addPersonSheet }
+                .sheet(isPresented: $showingFilter) { filterSheet }
+                .onAppear { handleViewAppear() }
+        }
+    }
+    
+    // MARK: - View Components
+    
+    @ViewBuilder
+    private var mainContent: some View {
+        if people.isEmpty {
+            EmptyPeopleView()
+        } else {
+            peopleList
+        }
+    }
+    
+    private var peopleList: some View {
+        List {
+            ForEach(filteredPeople) { person in
+                personRow(for: person)
+            }
+            .onDelete(perform: delete)
+        }
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .automatic),
+            prompt: "이름이나 연락처로 검색"
+        )
+    }
+    
+    private func personRow(for person: Person) -> some View {
+        NavigationLink(destination: PersonDetailView(person: person, selectedTab: .constant(0))) {
+            PersonCard(person: person)
+        }
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                AppStateManager.shared.selectPerson(person)
+            }
+        )
+    }
+    
+    // MARK: - Toolbar
+    
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        #if DEBUG
+        ToolbarItem(placement: .navigationBarLeading) {
+            debugMenu
+        }
+        #endif
+        
+        ToolbarItem(placement: .navigationBarTrailing) {
+            filterButton
+        }
+        
+        ToolbarItem(placement: .navigationBarTrailing) {
+            addButton
+        }
+    }
+    
+    private var debugMenu: some View {
+        Menu("개발") {
+            Button("샘플 데이터", action: addSampleData)
+            Button("액션 리셋") {
+                DataSeeder.resetDefaultActions(context: context)
+            }
+        }
+    }
+    
+    private var filterButton: some View {
+        Button {
+            showingFilter = true
+        } label: {
+            Image(systemName: filterOptions.hasActiveFilters ? 
+                  "line.3.horizontal.decrease.circle.fill" : 
+                  "line.3.horizontal.decrease.circle")
+                .foregroundStyle(filterOptions.hasActiveFilters ? .blue : .primary)
+        }
+    }
+    
+    private var addButton: some View {
+        Button {
+            showingAdd = true
+        } label: {
+            Image(systemName: "plus")
+        }
+    }
+    
+    // MARK: - Sheets
+    
+    private var addPersonSheet: some View {
+        AddPersonSheet { name, contact in
+            handleAddPerson(name: name, contact: contact)
+        }
+    }
+    
+    private var filterSheet: some View {
+        PeopleFilterView(
+            filterOptions: $filterOptions,
+            peopleCount: people.count,
+            filteredCount: filteredPeople.count
+        )
+    }
+    
+    // MARK: - Actions & Handlers
+    
+    private func handleAddPerson(name: String, contact: String) {
+        let newPerson = Person(name: name, contact: contact)
+        context.insert(newPerson)
+        
+        do {
+            try context.save()
+            print("✅ 새 Person 저장 완료: \(name)")
+            
+            // 새 Person에 대한 액션 인스턴스들 생성
+            DataSeeder.createPersonActionsForNewPerson(person: newPerson, context: context)
+        } catch {
+            print("❌ 새 Person 저장 실패: \(error)")
+        }
+    }
+    
+    private func handleViewAppear() {
+        // 앱 최초 실행 시 기본 액션 30개 생성
+        DataSeeder.seedDefaultActionsIfNeeded(context: context)
+        
+        // 관계 상태 자동 업데이트 스케줄링
+        RelationshipStateManager.shared.scheduleRelationshipStateCheck(context: context)
     }
 
     private func delete(at offsets: IndexSet) {
@@ -495,8 +612,8 @@ struct PersonCard: View {
     
     private var footerSection: some View {
         HStack {
-            if let lastContact = person.lastContact {
-                Text("마지막 접촉: \(lastContact.relative())")
+            if let lastInteraction = person.mostRecentInteractionDate {
+                Text("마지막 만남: \(lastInteraction.relative())")
                     .font(.body)
                     .foregroundStyle(.secondary)
             }

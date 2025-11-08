@@ -915,6 +915,20 @@ extension Person {
         }
     }
     
+    /// 모든 상호작용 중 가장 최근 날짜
+    /// 멘토링, 식사, 연락 등 모든 실제 접촉점 중 가장 최신을 반환
+    var mostRecentInteractionDate: Date? {
+        let allInteractionDates = [lastContact, lastMeal, lastMentoring]
+            .compactMap { $0 }
+        
+        // InteractionRecord들의 날짜도 포함
+        let recordDates = interactionRecords.map { $0.date }
+        
+        // 모든 날짜를 합쳐서 가장 최근 것을 찾기
+        let allDates = allInteractionDates + recordDates
+        return allDates.max()
+    }
+    
     /// 소홀함 상태 (자동 계산됨)
     /// 고민이 방치되거나, 중요한 액션이 놓치거나, 오래 연락이 없는 경우 true
         var isNeglected: Bool {
