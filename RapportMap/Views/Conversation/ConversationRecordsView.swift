@@ -155,6 +155,7 @@ struct ConversationTypeButton: View {
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(Capsule().fill(Color.red))
+                                    .offset(x: 8, y: -8)
                             }
                             Spacer()
                         }
@@ -453,6 +454,10 @@ struct ConversationRecordDetailRow: View {
                     }
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                showingEditSheet = true
+            }
             
             VStack {
                 if !record.isResolved {
@@ -641,87 +646,5 @@ struct AddConversationRecordSheet: View {
     }
 }
 
-// MARK: - EditConversationRecordSheet
-struct EditConversationRecordSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var context
-    
-    @Bindable var record: ConversationRecord
-    @State private var tempContent: String
-    @State private var tempPriority: ConversationPriority
-    
-    init(record: ConversationRecord) {
-        self.record = record
-        self._tempContent = State(initialValue: record.content)
-        self._tempPriority = State(initialValue: record.priority)
-    }
-    
-    private var typeColor: Color {
-        return record.type.color
-    }
-    
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("\(record.type.title) 편집") {
-                    TextField("내용", text: $tempContent, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(3...8)
-                }
-                
-                Section("우선순위") {
-                    Picker("우선순위", selection: $tempPriority) {
-                        ForEach(ConversationPriority.allCases, id: \.self) { priority in
-                            HStack {
-                                Text(priority.emoji)
-                                Text(priority.title)
-                            }
-                            .tag(priority)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-                
-                Section("상태") {
-                    Toggle("해결됨", isOn: $record.isResolved)
-                        .tint(typeColor)
-                }
-            }
-            .navigationTitle("\(record.type.title) 편집")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("취소") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("저장") {
-                        saveChanges()
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-    
-    private func saveChanges() {
-        record.content = tempContent.trimmingCharacters(in: .whitespacesAndNewlines)
-        record.priority = tempPriority
-        
-        if record.isResolved && record.resolvedDate == nil {
-            record.resolvedDate = Date()
-        } else if !record.isResolved {
-            record.resolvedDate = nil
-        }
-        
-        do {
-            try context.save()
-            print("✅ \(record.type.title) 기록 수정 완료")
-            
-            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-            impactFeedback.impactOccurred()
-        } catch {
-            print("❌ \(record.type.title) 기록 수정 실패: \(error)")
-        }
-    }
-}
+
 

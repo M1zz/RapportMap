@@ -354,8 +354,15 @@ struct PersonDetailView: View {
             HStack {
                 Text("미해결 대화:")
                 Spacer()
-                Text("\(person.currentUnansweredCount)개")
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(person.currentUnansweredCount)개")
+                        .foregroundStyle(.secondary)
+                    if person.currentUnansweredCount > 0 {
+                        Text("(질문, 고민, 약속 포함)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
             
             // 소홀함 상태 표시 (자동 계산됨)

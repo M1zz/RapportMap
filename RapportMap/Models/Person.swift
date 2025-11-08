@@ -504,7 +504,123 @@ extension Person {
     /// - Parameter record: 해결할 대화 기록
     func resolveConversationRecord(_ record: ConversationRecord) {
         record.isResolved = true
+        record.resolvedDate = Date()
         print("✅ [Conversation] \(record.type.title) 해결됨: \(record.content)")
+    }
+    
+    /// 대화 기록을 미해결 상태로 되돌리기
+    /// 해결했다고 표시했던 것을 다시 미해결로 변경할 때 사용
+    /// - Parameter record: 미해결로 되돌릴 대화 기록
+    func unresolveConversationRecord(_ record: ConversationRecord) {
+        record.isResolved = false
+        record.resolvedDate = nil
+        print("🔄 [Conversation] \(record.type.title) 미해결로 변경됨: \(record.content)")
+    }
+    
+    /// 대화 기록의 내용 수정
+    /// - Parameters:
+    ///   - record: 수정할 대화 기록
+    ///   - newContent: 새로운 내용
+    ///   - newNotes: 새로운 메모 (선택사항)
+    ///   - newPriority: 새로운 우선순위 (선택사항)
+    ///   - newTags: 새로운 태그들 (선택사항)
+    func updateConversationRecord(
+        _ record: ConversationRecord,
+        content newContent: String? = nil,
+        notes newNotes: String? = nil,
+        priority newPriority: ConversationPriority? = nil,
+        tags newTags: [String]? = nil
+    ) {
+        if let newContent = newContent {
+            record.content = newContent
+        }
+        
+        if let newNotes = newNotes {
+            record.notes = newNotes
+        }
+        
+        if let newPriority = newPriority {
+            record.priority = newPriority
+        }
+        
+        if let newTags = newTags {
+            record.tags = newTags
+        }
+        
+        print("🔄 [Conversation] \(record.type.title) 수정됨: \(record.content)")
+    }
+    
+    /// 대화 기록의 타입 변경 (질문 → 고민, 약속 → 질문 등)
+    /// - Parameters:
+    ///   - record: 수정할 대화 기록
+    ///   - newType: 새로운 대화 타입
+    func changeConversationRecordType(_ record: ConversationRecord, to newType: ConversationType) {
+        let oldType = record.type
+        record.type = newType
+        print("🔄 [Conversation] 타입 변경: \(oldType.title) → \(newType.title) - \(record.content)")
+    }
+    
+    /// 대화 기록 삭제
+    /// - Parameters:
+    ///   - record: 삭제할 대화 기록
+    ///   - modelContext: SwiftData 모델 컨텍스트
+    func deleteConversationRecord(_ record: ConversationRecord, modelContext: ModelContext) {
+        if let index = conversationRecords.firstIndex(of: record) {
+            conversationRecords.remove(at: index)
+            modelContext.delete(record)
+            print("🗑️ [Conversation] \(record.type.title) 삭제됨: \(record.content)")
+        }
+    }
+    
+    /// ID를 통해 특정 대화 기록 찾기
+    /// - Parameter id: 찾을 대화 기록의 UUID
+    /// - Returns: 해당하는 ConversationRecord 또는 nil
+    func findConversationRecord(by id: UUID) -> ConversationRecord? {
+        return conversationRecords.first { $0.id == id }
+    }
+    
+    /// ID를 통해 대화 기록 수정 (편의 메서드)
+    /// - Parameters:
+    ///   - id: 수정할 대화 기록의 UUID
+    ///   - content: 새로운 내용 (선택사항)
+    ///   - notes: 새로운 메모 (선택사항)
+    ///   - priority: 새로운 우선순위 (선택사항)
+    ///   - tags: 새로운 태그들 (선택사항)
+    /// - Returns: 수정 성공 여부
+    @discardableResult
+    func updateConversationRecord(
+        withId id: UUID,
+        content: String? = nil,
+        notes: String? = nil,
+        priority: ConversationPriority? = nil,
+        tags: [String]? = nil
+    ) -> Bool {
+        guard let record = findConversationRecord(by: id) else {
+            print("❌ [Conversation] ID \(id)에 해당하는 대화 기록을 찾을 수 없음")
+            return false
+        }
+        
+        updateConversationRecord(record, content: content, notes: notes, priority: priority, tags: tags)
+        return true
+    }
+    
+    /// ID를 통해 대화 기록 해결/미해결 토글
+    /// - Parameter id: 토글할 대화 기록의 UUID
+    /// - Returns: 변경 후 해결 상태 (성공한 경우)
+    @discardableResult
+    func toggleConversationRecordResolution(withId id: UUID) -> Bool? {
+        guard let record = findConversationRecord(by: id) else {
+            print("❌ [Conversation] ID \(id)에 해당하는 대화 기록을 찾을 수 없음")
+            return nil
+        }
+        
+        if record.isResolved {
+            unresolveConversationRecord(record)
+            return false
+        } else {
+            resolveConversationRecord(record)
+            return true
+        }
     }
     
     /// 특정 타입의 대화 기록들을 날짜 역순으로 반환
@@ -845,10 +961,10 @@ extension Person {
     
     // MARK: - 대화/상태 관련 편의 프로퍼티들
     
-    /// 미해결 질문 수 (새로운 방식으로 계산)
+    /// 미해결 대화 수 (질문, 고민, 약속 모두 포함)
     var currentUnansweredCount: Int {
         return conversationRecords
-            .filter { $0.type == .question && !$0.isResolved }
+            .filter { !$0.isResolved && ($0.type == .question || $0.type == .concern || $0.type == .promise) }
             .count
     }
     
@@ -992,6 +1108,28 @@ extension Person {
         
         return false
     }
+    
+    /**
+     1. 고민 방치 (7일 기준)
+     • 미해결된 고민(concern)이 1주일(7일) 이상 방치된 경우
+     • 상대방의 고민을 들었지만 해결되지 않은 채로 오래 놔둔 상황
+
+     2. 긴급/중요 약속 방치 (3일 기준)
+     • 긴급(urgent) 또는 높은 우선순위(high) 약속이 3일 이상 방치된 경우
+     • 중요한 약속을 지키지 않거나 연기하고 있는 상황
+
+     3. 중요 액션 지연 (1일 기준)
+     • 중요(critical) 액션의 리마인더 날짜를 1일 이상 지난 경우
+     • 해야 할 중요한 일들을 미루고 있는 상황
+
+     4. 장기간 접촉 없음 (21일 기준)
+     • 마지막 상호작용(멘토링, 식사, 연락)이 3주(21일) 이상 지난 경우
+     • 너무 오랫동안 연락하지 않은 상황
+
+     5. 미해결 질문 누적 (5개 기준)
+     • 미해결된 질문이 5개 이상 누적된 경우
+     • 상대방에게 물어본 것들에 대한 답을 받지 못한 상황
+     */
     
     /// 소홀함의 이유를 설명하는 텍스트
     var neglectedReason: String {
