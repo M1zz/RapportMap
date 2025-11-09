@@ -24,6 +24,56 @@ enum PersonDetailTab: Int, CaseIterable {
     }
 }
 
+// 연락처 동기화 상태 정의
+enum ContactSyncStatus {
+    case unknown
+    case checking
+    case synced(CNContact)
+    case notFound
+    case error(String)
+    
+    var displayText: String {
+        switch self {
+        case .unknown:
+            return "확인 중..."
+        case .checking:
+            return "연락처 검색 중..."
+        case .synced:
+            return "iPhone 연락처와 연동됨"
+        case .notFound:
+            return "iPhone 연락처에 없음"
+        case .error(let message):
+            return "오류: \(message)"
+        }
+    }
+    
+    var color: Color {
+        switch self {
+        case .unknown, .checking:
+            return .secondary
+        case .synced:
+            return .green
+        case .notFound:
+            return .orange
+        case .error:
+            return .red
+        }
+    }
+    
+    var systemImage: String {
+        switch self {
+        case .unknown, .checking:
+            return "magnifyingglass"
+        case .synced:
+            return "checkmark.circle.fill"
+        case .notFound:
+            return "exclamationmark.triangle.fill"
+        case .error:
+            return "xmark.circle.fill"
+        }
+    }
+}
+
 struct PersonDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -36,6 +86,10 @@ struct PersonDetailView: View {
     @State private var showingContactPicker = false
     @State private var isLoadingContact = false
     @State private var refreshTrigger = 0 // UI 강제 새로고침을 위한 트리거
+    @State private var isSyncingContact = false // 연락처 동기화 로딩 상태
+    @State private var contactSyncStatus: ContactSyncStatus = .unknown // 연락처 동기화 상태
+    @State private var syncSuccessMessage: String? = nil // 동기화 성공 메시지
+    @State private var showingSyncSuccess = false // 동기화 성공 알림 표시
     @StateObject private var contactsManager = ContactsManager.shared
     @Binding var selectedTab: Int
     
@@ -120,6 +174,15 @@ struct PersonDetailView: View {
                     person.contact = contactInfo
                     try? context.save()
                     print("✅ \(person.name)의 연락처 정보 업데이트됨: \(contactInfo)")
+                }
+                
+                // 동기화 상태를 즉시 synced로 설정 (연락처에서 선택했으므로)
+                contactSyncStatus = .synced(contact)
+                contactsManager.lastError = nil
+                
+                // 추가 확인을 위한 비동기 체크
+                Task {
+                    await checkContactSyncStatus()
                 }
             }
         }
@@ -408,6 +471,12 @@ struct PersonDetailView: View {
             
             HStack {
                 TextField("연락처", text: $person.contact)
+                    .onChange(of: person.contact) { oldValue, newValue in
+                        // 연락처가 변경되면 동기화 상태 재확인
+                        Task {
+                            await checkContactSyncStatus()
+                        }
+                    }
                 
                 // 연락처가 비어있거나 "연락처 없음"일 때 연락처에서 가져오기 버튼 표시
                 if person.contact.isEmpty || person.contact == "연락처 없음" {
@@ -432,6 +501,8 @@ struct PersonDetailView: View {
                                 try? context.save()
                                 isLoadingContact = false
                             }
+                            // 연락처를 찾았으므로 동기화 상태 재확인
+                            await checkContactSyncStatus()
                         } else {
                             await MainActor.run {
                                 isLoadingContact = false
@@ -458,12 +529,17 @@ struct PersonDetailView: View {
                 .disabled(isLoadingContact)
             }
             
-            // 에러 표시
-            if let error = contactsManager.lastError {
-                Text(error)
+            // 에러 표시 (연락처 동기화 관련 에러만)
+            if case .error(let errorMessage) = contactSyncStatus {
+                Text(errorMessage)
                     .font(.caption)
                     .foregroundColor(.red)
                     .padding(.horizontal)
+            }
+        }
+        .onAppear {
+            Task {
+                await checkContactSyncStatus()
             }
         }
     }
@@ -657,6 +733,188 @@ struct PersonDetailView: View {
         }
         
         return ""
+    }
+    
+    /// 연락처 동기화 상태를 확인하는 메소드
+    private func checkContactSyncStatus() async {
+        // 연락처 정보가 없으면 확인하지 않음
+        guard !person.contact.isEmpty && person.contact != "연락처 없음" else {
+            await MainActor.run {
+                contactSyncStatus = .notFound
+                // 에러 메시지 초기화
+                contactsManager.lastError = nil
+            }
+            return
+        }
+        
+        await MainActor.run {
+            contactSyncStatus = .checking
+            // 검색 시작할 때 이전 에러 메시지 초기화
+            contactsManager.lastError = nil
+        }
+        
+        // 연락처 검색 시도
+        do {
+            if let contact = await contactsManager.findContact(for: person) {
+                await MainActor.run {
+                    contactSyncStatus = .synced(contact)
+                    // 성공하면 에러 메시지 초기화
+                    contactsManager.lastError = nil
+                    print("✅ 연락처 동기화 상태: 연동됨 (\(contact.givenName) \(contact.familyName))")
+                }
+            } else {
+                await MainActor.run {
+                    contactSyncStatus = .notFound
+                    // 찾지 못한 경우는 에러가 아니므로 에러 메시지 초기화
+                    contactsManager.lastError = nil
+                    print("⚠️ 연락처 동기화 상태: iPhone 연락처에 없음")
+                }
+            }
+        } catch {
+            // 실제 에러가 발생한 경우에만 에러 상태로 설정
+            await MainActor.run {
+                contactSyncStatus = .error("연락처 검색 실패: \(error.localizedDescription)")
+                print("❌ 연락처 동기화 에러: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    /// iPhone 연락처에서 정보를 가져와서 Person 정보를 업데이트하는 메소드
+    private func syncContactInfo(from contact: CNContact) async {
+        await MainActor.run {
+            isSyncingContact = true
+            syncSuccessMessage = nil
+            showingSyncSuccess = false
+        }
+        
+        var hasUpdates = false
+        var updatedInfo: [String] = []
+        
+        // 이름 동기화 (공백 포함된 형태로 업데이트)
+        let contactFullName = "\(contact.familyName)\(contact.givenName)".trimmingCharacters(in: .whitespaces)
+        if !contactFullName.isEmpty && contactFullName != person.name {
+            await MainActor.run {
+                person.name = contactFullName
+            }
+            hasUpdates = true
+            updatedInfo.append("이름")
+        }
+        
+        // 연락처 정보 동기화 (더 나은 정보로 업데이트)
+        let newContactInfo = extractContactInfo(from: contact)
+        if !newContactInfo.isEmpty && newContactInfo != person.contact {
+            // 기존 연락처와 다르면 업데이트 여부를 확인
+            let shouldUpdate = person.contact.isEmpty || 
+                              person.contact == "연락처 없음" || 
+                              newContactInfo.count > person.contact.count // 더 완전한 정보인 경우
+            
+            if shouldUpdate {
+                await MainActor.run {
+                    person.contact = newContactInfo
+                }
+                hasUpdates = true
+                updatedInfo.append("연락처")
+            }
+        }
+        
+        // 추가적으로 동기화할 수 있는 정보들
+        if !contact.emailAddresses.isEmpty {
+            let emails = contact.emailAddresses.map { $0.value as String }
+            // 이메일 정보를 Person 모델에 추가하려면 Person 모델에 email 필드를 추가해야 함
+            print("📧 사용 가능한 이메일: \(emails.joined(separator: ", "))")
+        }
+        
+        if !contact.phoneNumbers.isEmpty {
+            let phones = contact.phoneNumbers.map { "\($0.label ?? "기타"): \($0.value.stringValue)" }
+            print("📞 사용 가능한 전화번호: \(phones.joined(separator: ", "))")
+        }
+        
+        // 메모나 기타 정보
+        if !contact.note.isEmpty {
+            print("📝 연락처 메모: \(contact.note)")
+        }
+        
+        // 변경사항 저장 및 피드백
+        await MainActor.run {
+            if hasUpdates {
+                try? context.save()
+                syncSuccessMessage = "\(updatedInfo.joined(separator: ", ")) 업데이트됨"
+                print("✅ 연락처 정보 동기화 완료: \(updatedInfo.joined(separator: ", "))")
+            } else {
+                syncSuccessMessage = "모든 정보가 최신 상태입니다"
+                print("ℹ️ 업데이트할 정보가 없습니다.")
+            }
+            
+            isSyncingContact = false
+            showingSyncSuccess = true
+        }
+        
+        // 성공 피드백
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+        
+        // 3초 후에 성공 메시지 숨기기
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                showingSyncSuccess = false
+            }
+            
+            // 추가 1초 후에 메시지 완전 제거
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                syncSuccessMessage = nil
+            }
+        }
+    }
+    
+    /// Person을 iPhone 연락처에 추가하는 메소드
+    private func addToPhoneContacts() async {
+        // 추가 시작할 때 에러 메시지 초기화
+        await MainActor.run {
+            contactsManager.lastError = nil
+            syncSuccessMessage = nil
+            showingSyncSuccess = false
+        }
+        
+        let success = await contactsManager.addPersonToContacts(person)
+        
+        if success {
+            // 추가 성공하면 동기화 상태 재확인
+            await checkContactSyncStatus()
+            
+            // 성공 피드백
+            await MainActor.run {
+                syncSuccessMessage = "iPhone 연락처에 추가됨"
+                showingSyncSuccess = true
+            }
+            
+            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+            impactFeedback.impactOccurred()
+            
+            print("✅ \(person.name)을 iPhone 연락처에 추가했습니다.")
+            
+            // 3초 후에 성공 메시지 숨기기
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    showingSyncSuccess = false
+                }
+                
+                // 추가 1초 후에 메시지 완전 제거
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    syncSuccessMessage = nil
+                }
+            }
+            
+        } else {
+            // 실패한 경우 동기화 상태를 에러로 설정
+            await MainActor.run {
+                if let error = contactsManager.lastError {
+                    contactSyncStatus = .error(error)
+                } else {
+                    contactSyncStatus = .error("iPhone 연락처 추가 실패")
+                }
+            }
+            print("❌ iPhone 연락처 추가 실패")
+        }
     }
 }
 

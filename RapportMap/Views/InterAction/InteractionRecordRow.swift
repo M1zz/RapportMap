@@ -63,6 +63,30 @@ struct InteractionRecordRow: View {
                 
                 // 추가 정보들
                 VStack(alignment: .leading, spacing: 4) {
+                    // 연결된 멘토링 녹음 파일 정보
+                    if record.type == .mentoring, let meetingRecord = record.relatedMeetingRecord {
+                        HStack(spacing: 4) {
+                            Image(systemName: "waveform")
+                                .font(.caption2)
+                                .foregroundStyle(.blue)
+                            Text("녹음 파일 연결됨 (\(meetingRecord.formattedDuration))")
+                                .font(.caption)
+                                .foregroundStyle(.blue)
+                            
+                            if meetingRecord.hasAudio {
+                                Image(systemName: "speaker.wave.2")
+                                    .font(.caption2)
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.blue.opacity(0.1))
+                        )
+                    }
+                    
                     if let duration = record.formattedDuration {
                         HStack(spacing: 4) {
                             Image(systemName: "clock")

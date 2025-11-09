@@ -399,14 +399,23 @@ extension Person {
     ///   - notes: 상호작용에 대한 메모
     ///   - duration: 상호작용 지속 시간
     ///   - location: 상호작용 발생 장소
-    func addInteractionRecord(type: InteractionType, date: Date = Date(), notes: String? = nil, duration: TimeInterval? = nil, location: String? = nil) {
+    ///   - relatedMeetingRecord: 연관된 미팅 기록 (멘토링의 경우 녹음 파일)
+    func addInteractionRecord(
+        type: InteractionType, 
+        date: Date = Date(), 
+        notes: String? = nil, 
+        duration: TimeInterval? = nil, 
+        location: String? = nil,
+        relatedMeetingRecord: MeetingRecord? = nil
+    ) {
         // 새로운 상호작용 기록 생성
         let record = InteractionRecord(
             date: date,
             type: type,
             notes: notes,
             duration: duration,
-            location: location
+            location: location,
+            relatedMeetingRecord: relatedMeetingRecord
         )
         record.person = self
         interactionRecords.append(record)

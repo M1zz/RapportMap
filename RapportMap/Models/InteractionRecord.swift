@@ -15,6 +15,10 @@ final class InteractionRecord {
     @Relationship(deleteRule: .nullify)
     var person: Person?
     
+    // 연관된 미팅 기록 (멘토링 상호작용의 경우 녹음 파일과 연결)
+    @Relationship(deleteRule: .nullify)
+    var relatedMeetingRecord: MeetingRecord?
+    
     init(
         id: UUID = UUID(),
         date: Date = Date(),
@@ -22,7 +26,8 @@ final class InteractionRecord {
         notes: String? = nil,
         duration: TimeInterval? = nil,
         location: String? = nil,
-        isImportant: Bool = false
+        isImportant: Bool = false,
+        relatedMeetingRecord: MeetingRecord? = nil
     ) {
         self.id = id
         self.date = date
@@ -31,6 +36,7 @@ final class InteractionRecord {
         self.duration = duration
         self.location = location
         self.isImportant = isImportant
+        self.relatedMeetingRecord = relatedMeetingRecord
     }
 }
 

@@ -154,8 +154,17 @@ struct RecentInteractionsView: View {
     }
     
     private func handleQuickAction(for type: InteractionType) {
+        // 모든 타입에 대해 바로 상호작용 기록을 생성하고 편집 화면으로
+        createNewInteraction(for: type, relatedMeetingRecord: nil)
+    }
+    
+    private func createNewInteraction(for type: InteractionType, relatedMeetingRecord: MeetingRecord? = nil) {
         // 새로운 상호작용 기록 추가
-        person.addInteractionRecord(type: type, date: Date())
+        person.addInteractionRecord(
+            type: type, 
+            date: Date(), 
+            relatedMeetingRecord: relatedMeetingRecord
+        )
         person.updateRelationshipState()
         try? context.save()
         
@@ -175,6 +184,13 @@ struct InteractionRecordDetailView: View {
     let record: InteractionRecord
     let person: Person
     let onEdit: () -> Void
+    
+    private var relativeDate: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        formatter.locale = Locale(identifier: "ko_KR")
+        return formatter.localizedString(for: record.date, relativeTo: Date())
+    }
     
     var body: some View {
         NavigationStack {
@@ -212,7 +228,7 @@ struct InteractionRecordDetailView: View {
                                 }
                             }
                             
-                            Text(record.relativeDate)
+                            Text(relativeDate)
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
@@ -229,6 +245,79 @@ struct InteractionRecordDetailView: View {
                     
                     // 상세 정보 섹션들
                     VStack(spacing: 16) {
+                        // 연결된 녹음 파일 정보 (모든 상호작용 타입)
+                        if let meetingRecord = record.relatedMeetingRecord {
+                            VStack(spacing: 12) {
+                                HStack {
+                                    Image(systemName: "waveform")
+                                        .foregroundStyle(.blue)
+                                    Text("연결된 녹음 파일")
+                                        .font(.headline)
+                                        .fontWeight(.semibold)
+                                    Spacer()
+                                }
+                                
+                                VStack(spacing: 8) {
+                                    HStack {
+                                        HStack(spacing: 4) {
+                                            Text(meetingRecord.meetingType.emoji)
+                                                .font(.headline)
+                                            Text(meetingRecord.meetingType.rawValue)
+                                                .font(.subheadline)
+                                                .fontWeight(.medium)
+                                        }
+                                        Spacer()
+                                        Text(meetingRecord.date.formatted(date: .abbreviated, time: .shortened))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    
+                                    HStack {
+                                        Text("녹음 시간:")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                        Spacer()
+                                        Text(meetingRecord.formattedDuration)
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                    }
+                                    
+                                    if !meetingRecord.summary.isEmpty {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            HStack {
+                                                Text("요약:")
+                                                    .font(.subheadline)
+                                                    .foregroundStyle(.secondary)
+                                                Spacer()
+                                            }
+                                            Text(meetingRecord.summary)
+                                                .font(.subheadline)
+                                                .foregroundStyle(.primary)
+                                        }
+                                    }
+                                    
+                                    if meetingRecord.hasAudio {
+                                        HStack {
+                                            Image(systemName: "speaker.wave.2")
+                                                .font(.caption)
+                                                .foregroundStyle(.green)
+                                            Text("오디오 파일 있음")
+                                                .font(.caption)
+                                                .foregroundStyle(.green)
+                                            Spacer()
+                                        }
+                                    }
+                                }
+                            }
+                            .padding()
+                            .background(Color.blue.opacity(0.05))
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.blue.opacity(0.2), lineWidth: 1)
+                            )
+                        }
+                        
                         // 위치 정보
                         if let location = record.location, !location.isEmpty {
                             DetailInfoCard(
@@ -367,15 +456,6 @@ struct StatCard: View {
     }
 }
 
-// MARK: - InteractionRecord Extension
-extension InteractionRecord {
-    var relativeDate: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: self.date, relativeTo: .now)
-    }
-}
-
 // MARK: - InteractionRecordCard
 struct InteractionRecordCard: View {
     let record: InteractionRecord
@@ -412,8 +492,21 @@ struct InteractionRecordCard: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                 
-                // 내용 표시 (있는 경우)
-                if let notes = record.notes, !notes.isEmpty {
+                // 내용 표시 (연결된 녹음, 메모, 위치 순서로)
+                if let meetingRecord = record.relatedMeetingRecord {
+                    HStack(spacing: 4) {
+                        Image(systemName: "waveform")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                        Text("녹음 연결됨")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(4)
+                } else if let notes = record.notes, !notes.isEmpty {
                     Text(notes)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -450,6 +543,13 @@ struct InteractionHistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     let person: Person
+    
+    private func relativeDate(for record: InteractionRecord) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        formatter.locale = Locale(identifier: "ko_KR")
+        return formatter.localizedString(for: record.date, relativeTo: Date())
+    }
     
     // 필터링 옵션
     enum FilterOption: String, CaseIterable {
@@ -537,7 +637,7 @@ struct InteractionHistoryView: View {
                         if selectedFilter != .all {
                             VStack(spacing: 4) {
                                 if let mostRecentRecord = filteredInteractionRecords.first {
-                                    Text(mostRecentRecord.relativeDate)
+                                    Text(relativeDate(for: mostRecentRecord))
                                         .font(.title3)
                                         .fontWeight(.semibold)
                                         .foregroundStyle(.green)
