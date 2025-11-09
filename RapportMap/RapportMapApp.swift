@@ -22,7 +22,8 @@ struct RapportMapApp: App {
             PersonAction.self, 
             MeetingRecord.self,
             PersonContext.self,  // 추가!
-            InteractionRecord.self  // 혹시 빠졌다면 추가
+            InteractionRecord.self,  // 혹시 빠졌다면 추가
+            ConversationRecord.self  // 대화 기록 모델 추가
         ])
     }
 }

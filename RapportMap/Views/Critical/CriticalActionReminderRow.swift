@@ -46,6 +46,16 @@ struct CriticalActionReminderRow: View {
         }
     }
     
+    // 최근 5분 내에 추가된 항목인지 확인 (PersonAction에는 추가 시간이 없으므로 RapportAction의 ID로 추정)
+    private func isRecentlyAdded() -> Bool {
+        // PersonAction에는 생성 시간이 없으므로, action의 order가 999인 커스텀 액션이면서
+        // 아직 완료되지 않은 상태인 경우를 최근 추가로 간주
+        guard let action = personAction.action else { return false }
+        
+        // 커스텀 액션(order 999)이면서 아직 완료되지 않은 경우
+        return action.order == 999 && !personAction.isCompleted
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -67,6 +77,18 @@ struct CriticalActionReminderRow: View {
                                         : .primary
                                 )
                                 .strikethrough(personAction.isCompleted, color: .orange) // Critical 액션도 완료되면 취소선 적용
+                            
+                            // 새로 추가된 항목 표시
+                            if isRecentlyAdded() {
+                                Text("NEW")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange)
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                            }
                             
                             // 긴급도 뱃지 (미완료 시에만)
                             if !personAction.isCompleted {
@@ -231,6 +253,8 @@ struct CriticalActionReminderRow: View {
             }
         }
         .padding(.vertical, 4)
+        .background(isRecentlyAdded() ? Color.orange.opacity(0.05) : Color.clear)
+        .cornerRadius(8)
         .contentShape(Rectangle()) // 전체 영역을 탭 가능하게 하지만 기본 동작은 없음
         .sheet(isPresented: $showingReminderPicker) {
             ReminderPickerSheet(personAction: personAction)

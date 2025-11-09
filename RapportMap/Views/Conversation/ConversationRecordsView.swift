@@ -431,7 +431,33 @@ struct ConversationRecordDetailRow: View {
                             .font(.caption2)
                     }
                     
+                    // 중요 표시
+                    if record.isImportant {
+                        Image(systemName: "star.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.yellow)
+                    }
+                    
                     Spacer()
+                    
+                    // 중요 표시 토글 버튼
+                    Button {
+                        record.isImportant.toggle()
+                        try? context.save()
+                        
+                        // 중요한 기록으로 설정했을 때 알림 발송
+                        if record.isImportant {
+                            NotificationCenter.default.post(
+                                name: .importantRecordingAdded,
+                                object: record.person
+                            )
+                        }
+                    } label: {
+                        Image(systemName: record.isImportant ? "eye.fill" : "eye")
+                            .font(.caption)
+                            .foregroundStyle(record.isImportant ? .orange : .secondary)
+                    }
+                    .buttonStyle(.borderless)
                 }
                 
                 Text(record.content)
@@ -532,9 +558,8 @@ struct AddConversationRecordSheet: View {
         case .promise: return "아직 지키지 못한 약속이나 해야 할 일은?"
         case .update: return "이 사람의 최근 근황은?"
         case .feedback: return "이 사람에게 받은 피드백은?"
-        case .request: return "이 사람의 요청사항은?"
         case .achievement: return "이 사람의 성취나 좋은 소식은?"
-        case .problem: return "이 사람이 겪고 있는 문제는?"
+        default: return "내용을 입력하세요"
         }
     }
     

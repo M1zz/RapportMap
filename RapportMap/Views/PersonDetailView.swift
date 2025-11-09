@@ -35,6 +35,7 @@ struct PersonDetailView: View {
     @State private var showingQuickRecord = false
     @State private var showingContactPicker = false
     @State private var isLoadingContact = false
+    @State private var refreshTrigger = 0 // UI 강제 새로고침을 위한 트리거
     @StateObject private var contactsManager = ContactsManager.shared
     @Binding var selectedTab: Int
     
@@ -62,6 +63,40 @@ struct PersonDetailView: View {
             }
         }
         .navigationTitle(person.name)
+        .id(refreshTrigger) // refreshTrigger 값이 변경되면 전체 뷰가 새로고침됨
+        .onReceive(NotificationCenter.default.publisher(for: .importantRecordingAdded)) { notification in
+            // 현재 Person과 알림의 Person이 일치하는지 확인
+            if let notificationPerson = notification.object as? Person,
+               notificationPerson.id == person.id {
+                // UI 강제 새로고침
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    refreshTrigger += 1
+                }
+                print("🔄 PersonDetailView refreshed for important recording")
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .criticalActionAdded)) { notification in
+            // 현재 Person과 알림의 Person이 일치하는지 확인
+            if let notificationPerson = notification.object as? Person,
+               notificationPerson.id == person.id {
+                print("🔄 PersonDetailView received criticalActionAdded notification")
+                print("🔍 Person actions count: \(person.actions.count)")
+                
+                // UI 강제 새로고침
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    refreshTrigger += 1
+                }
+                
+                // 약간의 지연 후 추가 새로고침 (SwiftData 동기화 시간)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        refreshTrigger += 1
+                    }
+                }
+                
+                print("🔄 PersonDetailView refreshed for new critical action (trigger: \(refreshTrigger))")
+            }
+        }
         .sheet(isPresented: $showingVoiceRecorder) {
             VoiceRecorderView(person: person)
         }
@@ -267,14 +302,57 @@ struct PersonDetailView: View {
     @ViewBuilder
     private var criticalActionsSection: some View {
         Section("⚠️ 놓치면 안되는 것들") {
+            // 기존 Critical Actions
             ForEach(getCriticalActions(), id: \.id) { personAction in
                 CriticalActionReminderRow(personAction: personAction)
+                    .id("\(personAction.id)-\(refreshTrigger)") // 새로고침 시 효과
+            }
+            
+            // 중요한 상호작용 기록들 추가
+            ForEach(person.getImportantInteractionRecords(), id: \.id) { interaction in
+                ImportantInteractionRow(interaction: interaction)
+                    .id("\(interaction.id)-\(refreshTrigger)") // 새로고침 시 깜빡이는 효과
+            }
+            
+            // 중요한 미팅 기록들 추가
+            ForEach(person.getImportantMeetingRecords(), id: \.id) { meeting in
+                ImportantMeetingRow(meeting: meeting)
+                    .id("\(meeting.id)-\(refreshTrigger)") // 새로고침 시 깜빡이는 효과
+            }
+            
+            // 중요한 대화 기록들 추가
+            ForEach(person.getImportantConversationRecords(), id: \.id) { conversation in
+                ImportantConversationRow(conversation: conversation)
+                    .id("\(conversation.id)-\(refreshTrigger)") // 새로고침 시 깜빡이는 효과
             }
             
             addCriticalActionButton
             
-            if getCriticalActions().isEmpty {
+            if getCriticalActions().isEmpty && !person.hasImportantRecords {
                 emptyCriticalActionsMessage
+            }
+        }
+        .onAppear {
+            // 기존 대화 기록들을 자동으로 중요하게 표시
+            var hasChanges = false
+            for record in person.conversationRecords {
+                if (record.type == .concern || record.type == .promise || record.type == .question) && !record.isImportant {
+                    record.isImportant = true
+                    hasChanges = true
+                }
+            }
+            
+            // 변경사항이 있으면 저장하고 알림 발송
+            if hasChanges {
+                try? context.save()
+                
+                // UI 새로고침을 위한 알림 발송
+                NotificationCenter.default.post(
+                    name: .importantRecordingAdded,
+                    object: person
+                )
+                
+                print("✅ 기존 고민, 약속, 질문을 자동으로 중요하게 표시했습니다.")
             }
         }
     }
@@ -301,7 +379,7 @@ struct PersonDetailView: View {
             Text("여기에 표시할 중요한 것이 없어요")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Text("라포 액션 체크리스트에서 중요한 액션들을 완료한 후 눈 모양 버튼을 눌러 여기에 표시하도록 설정하거나, 위의 버튼으로 새로운 중요한 것을 추가해보세요.")
+            Text("라포 액션 체크리스트에서 중요한 액션들을 완료한 후 눈 모양 버튼을 눌러 여기에 표시하도록 설정하거나, 대화 기록에서 고민, 질문, 약속을 중요하다고 표시하거나, 위의 버튼으로 새로운 중요한 것을 추가해보세요.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -537,7 +615,7 @@ struct PersonDetailView: View {
     }
     
     private func getCriticalActions() -> [PersonAction] {
-        person.actions
+        let criticalActions = person.actions
             .filter {
                 $0.action?.type == .critical && $0.isVisibleInDetail
             }
@@ -547,6 +625,19 @@ struct PersonDetailView: View {
                 }
                 return ($0.action?.order ?? 0) < ($1.action?.order ?? 0)
             }
+        
+        // 디버깅 로그
+        print("🔍 [PersonDetailView] Getting critical actions for \(person.name):")
+        print("  Total actions: \(person.actions.count)")
+        print("  Critical actions found: \(criticalActions.count)")
+        
+        for action in person.actions {
+            if let rapportAction = action.action {
+                print("  Action: \(rapportAction.title), Type: \(rapportAction.type), Visible: \(action.isVisibleInDetail), Critical: \(rapportAction.type == .critical)")
+            }
+        }
+        
+        return criticalActions
     }
     
     /// CNContact에서 연락처 정보를 추출하는 헬퍼 메소드
@@ -566,5 +657,306 @@ struct PersonDetailView: View {
         }
         
         return ""
+    }
+}
+
+// MARK: - Important Record Row Views
+
+struct ImportantInteractionRow: View {
+    let interaction: InteractionRecord
+    @State private var isNewlyAdded = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // 상호작용 타입 아이콘
+            ZStack {
+                Circle()
+                    .fill(interaction.type.color.opacity(0.1))
+                    .frame(width: 32, height: 32)
+                
+                Image(systemName: interaction.type.systemImage)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(interaction.type.color)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(interaction.type.title)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    
+                    // 중요 표시
+                    Image(systemName: "star.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                    
+                    // 새로 추가된 항목 표시
+                    if isRecentlyAdded(interaction.date) {
+                        Text("NEW")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                    
+                    Spacer()
+                    
+                    Text(relativeDateString(for: interaction.date))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                
+                if let notes = interaction.notes, !notes.isEmpty {
+                    Text(notes)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                
+                if let duration = interaction.formattedDuration {
+                    Text("지속시간: \(duration)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            
+            Spacer()
+        }
+        .padding(.vertical, 4)
+        .background(isRecentlyAdded(interaction.date) ? Color.orange.opacity(0.05) : Color.clear)
+        .cornerRadius(8)
+    }
+    
+    // 최근 5분 내에 추가된 항목인지 확인
+    private func isRecentlyAdded(_ date: Date) -> Bool {
+        Date().timeIntervalSince(date) < 300 // 5분 = 300초
+    }
+    
+    private func relativeDateString(for date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        formatter.locale = Locale(identifier: "ko_KR")
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+struct ImportantMeetingRow: View {
+    let meeting: MeetingRecord
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // 미팅 타입 아이콘
+            ZStack {
+                Circle()
+                    .fill(Color.purple.opacity(0.1))
+                    .frame(width: 32, height: 32)
+                
+                Text(meeting.meetingType.emoji)
+                    .font(.system(size: 16))
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(meeting.meetingType.rawValue)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    
+                    // 중요 표시
+                    Image(systemName: "star.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                    
+                    // 오디오 파일 있음 표시
+                    if meeting.hasAudio {
+                        Image(systemName: "waveform")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                    }
+                    
+                    // 새로 추가된 항목 표시
+                    if isRecentlyAdded(meeting.date) {
+                        Text("NEW")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                    
+                    Spacer()
+                    
+                    Text(relativeDateString(for: meeting.date))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                
+                if !meeting.transcribedText.isEmpty {
+                    Text(meeting.transcribedText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                
+                Text("길이: \(meeting.formattedDuration)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+        }
+        .padding(.vertical, 4)
+        .background(isRecentlyAdded(meeting.date) ? Color.orange.opacity(0.05) : Color.clear)
+        .cornerRadius(8)
+    }
+    
+    // 최근 5분 내에 추가된 항목인지 확인
+    private func isRecentlyAdded(_ date: Date) -> Bool {
+        Date().timeIntervalSince(date) < 300 // 5분 = 300초
+    }
+    
+    private func relativeDateString(for date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        formatter.locale = Locale(identifier: "ko_KR")
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+struct ImportantConversationRow: View {
+    let conversation: ConversationRecord
+    @Environment(\.modelContext) private var context
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // 대화 타입 아이콘
+            ZStack {
+                Circle()
+                    .fill(conversation.type.color.opacity(0.1))
+                    .frame(width: 32, height: 32)
+                
+                Image(systemName: conversation.type.systemImage)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(conversation.type.color)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(conversation.type.title)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    
+                    // 중요 표시
+                    Image(systemName: "star.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                    
+                    // 우선순위 표시 (긴급/높음일 때만)
+                    if conversation.priority == .urgent || conversation.priority == .high {
+                        Text(conversation.priority.emoji)
+                            .font(.caption2)
+                    }
+                    
+                    // 새로 추가된 항목 표시
+                    if isRecentlyAdded(conversation.createdDate) {
+                        Text("NEW")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                    
+                    Spacer()
+                    
+                    Text(relativeDateString(for: conversation.createdDate))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                
+                // 대화 내용
+                Text(conversation.content)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                
+                // 미해결 상태 표시 (해결된 것은 이미 목록에서 제외됨)
+                Text("⏳ 미해결")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+            
+            // 해결 체크 버튼
+            Button {
+                toggleResolvedStatus()
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(conversation.isResolved ? Color.green : Color.clear)
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Circle()
+                                .stroke(conversation.isResolved ? Color.green : Color.gray, lineWidth: 2)
+                        )
+                    
+                    if conversation.isResolved {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 4)
+        .background(isRecentlyAdded(conversation.createdDate) ? Color.orange.opacity(0.05) : Color.clear)
+        .cornerRadius(8)
+    }
+    
+    private func toggleResolvedStatus() {
+        // 해결 상태를 토글하고 해결 날짜 설정
+        conversation.isResolved.toggle()
+        
+        if conversation.isResolved {
+            conversation.resolvedDate = Date()
+        } else {
+            conversation.resolvedDate = nil
+        }
+        
+        // 데이터베이스 저장
+        try? context.save()
+        
+        // 해결된 경우 UI에서 사라지도록 새로고침 알림 발송
+        if conversation.isResolved {
+            NotificationCenter.default.post(
+                name: .importantRecordingAdded,
+                object: conversation.person
+            )
+        }
+        
+        // 햅틱 피드백
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+        
+        let status = conversation.isResolved ? "해결됨 (목록에서 숨김)" : "미해결"
+        print("✅ \(conversation.type.title) '\(conversation.content)' 상태: \(status)")
+    }
+    
+    // 최근 5분 내에 추가된 항목인지 확인
+    private func isRecentlyAdded(_ date: Date) -> Bool {
+        Date().timeIntervalSince(date) < 300 // 5분 = 300초
+    }
+    
+    private func relativeDateString(for date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        formatter.locale = Locale(identifier: "ko_KR")
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }

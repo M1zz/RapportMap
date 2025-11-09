@@ -10,6 +10,7 @@ final class InteractionRecord {
     var notes: String?
     var duration: TimeInterval? // 만남의 경우 지속 시간
     var location: String? // 만남 장소
+    var isImportant: Bool = false // 중요도 표시
     
     @Relationship(deleteRule: .nullify)
     var person: Person?
@@ -20,7 +21,8 @@ final class InteractionRecord {
         type: InteractionType,
         notes: String? = nil,
         duration: TimeInterval? = nil,
-        location: String? = nil
+        location: String? = nil,
+        isImportant: Bool = false
     ) {
         self.id = id
         self.date = date
@@ -28,6 +30,7 @@ final class InteractionRecord {
         self.notes = notes
         self.duration = duration
         self.location = location
+        self.isImportant = isImportant
     }
 }
 

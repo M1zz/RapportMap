@@ -17,6 +17,7 @@ final class MeetingRecord {
     var transcribedText: String  // 음성 → 텍스트 변환 결과
     var summary: String  // 요약
     var duration: TimeInterval  // 녹음 길이
+    var isImportant: Bool = false // 중요도 표시
     
     // 관계
     var person: Person?
@@ -28,7 +29,8 @@ final class MeetingRecord {
         audioFileURL: String? = nil,
         transcribedText: String = "",
         summary: String = "",
-        duration: TimeInterval = 0
+        duration: TimeInterval = 0,
+        isImportant: Bool = false
     ) {
         self.id = id
         self.date = date
@@ -37,6 +39,7 @@ final class MeetingRecord {
         self.transcribedText = transcribedText
         self.summary = summary
         self.duration = duration
+        self.isImportant = isImportant
     }
 }
 

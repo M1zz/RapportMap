@@ -450,6 +450,42 @@ extension Person {
         return interactionRecords.sorted { $0.date > $1.date }
     }
     
+    /// 중요한 상호작용 기록들만 반환
+    /// "놓치면 안되는 것들" 섹션에서 사용
+    /// - Returns: 중요하다고 표시된 상호작용 기록들 (최신순)
+    func getImportantInteractionRecords() -> [InteractionRecord] {
+        return interactionRecords
+            .filter { $0.isImportant }
+            .sorted { $0.date > $1.date }
+    }
+    
+    /// 중요한 미팅 기록들만 반환
+    /// "놓치면 안되는 것들" 섹션에서 사용
+    /// - Returns: 중요하다고 표시된 미팅 기록들 (최신순)
+    func getImportantMeetingRecords() -> [MeetingRecord] {
+        return meetingRecords
+            .filter { $0.isImportant }
+            .sorted { $0.date > $1.date }
+    }
+    
+    /// 중요한 대화 기록들만 반환
+    /// "놓치면 안되는 것들" 섹션에서 사용
+    /// - Returns: 중요하다고 표시되고 아직 해결되지 않은 대화 기록들 (최신순)
+    func getImportantConversationRecords() -> [ConversationRecord] {
+        return conversationRecords
+            .filter { $0.isImportant && !$0.isResolved }
+            .sorted { $0.createdDate > $1.createdDate }
+    }
+    
+    /// 중요한 기록이 있는지 확인
+    /// UI에서 "놓치면 안되는 것들" 섹션을 표시할지 결정할 때 사용
+    /// - Returns: 중요한 상호작용이나 미팅 기록이 하나라도 있으면 true
+    var hasImportantRecords: Bool {
+        return interactionRecords.contains { $0.isImportant } || 
+               meetingRecords.contains { $0.isImportant } ||
+               conversationRecords.contains { $0.isImportant }
+    }
+    
     // MARK: - 대화/상태 기록 관리 메서드들
     
     /// 새로운 대화/상태 기록 추가
@@ -467,6 +503,7 @@ extension Person {
         content: String,
         notes: String? = nil,
         priority: ConversationPriority = .normal,
+        isImportant: Bool = false,
         tags: [String] = [],
         date: Date = Date()
     ) -> ConversationRecord {
@@ -475,6 +512,7 @@ extension Person {
             type: type,
             content: content,
             notes: notes,
+            isImportant: isImportant,
             priority: priority,
             tags: tags
         )
@@ -483,6 +521,14 @@ extension Person {
         
         // 기존 필드들도 호환성을 위해 업데이트
         updateLegacyConversationFields(from: record)
+        
+        // 중요한 기록이 추가되었을 때 알림 발송
+        if isImportant {
+            NotificationCenter.default.post(
+                name: .importantRecordingAdded,
+                object: self
+            )
+        }
         
         return record
     }
@@ -992,10 +1038,10 @@ extension Person {
             .map { $0.content }
     }
     
-    /// 최근 받은 질문들 (모든 요청 타입 포함)
+    /// 최근 받은 질문들 (질문 타입만 포함)
     var allReceivedQuestions: [String] {
         return conversationRecords
-            .filter { $0.type == .question || $0.type == .request }
+            .filter { $0.type == .question }
             .sorted { $0.date > $1.date }
             .map { $0.content }
     }

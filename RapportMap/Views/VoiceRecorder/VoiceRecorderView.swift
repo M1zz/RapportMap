@@ -11,6 +11,11 @@ import Speech
 import Combine
 import SwiftData
 
+// 중요한 녹음 저장 완료 알림을 위한 Notification 이름 정의
+extension Notification.Name {
+    static let importantRecordingAdded = Notification.Name("importantRecordingAdded")
+}
+
 struct VoiceRecorderView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -409,20 +414,21 @@ struct VoiceRecorderView: View {
                     print("Transcription completed: \(transcribedText.prefix(50))...")
                     
                     // 중복 실행 방지 체크
-                    guard recorder?.isTranscribing == true else {
+                    guard let recorder = recorder, recorder.isTranscribing == true else {
                         print("Transcription already completed or cancelled")
                         return
                     }
                     
                     // 상태 리셋
-                    recorder?.isTranscribing = false
+                    recorder.isTranscribing = false
                     
                     // InteractionRecord 생성 (새로운 방식)
                     let interaction = InteractionRecord(
                         date: Date(),
                         type: interactionType,
                         notes: transcribedText.isEmpty ? nil : transcribedText,
-                        duration: duration
+                        duration: duration,
+                        isImportant: self.isImportant
                     )
                     interaction.person = person
                     
@@ -441,7 +447,8 @@ struct VoiceRecorderView: View {
                         meetingType: meetingType,
                         audioFileURL: audioURL.path,
                         transcribedText: transcribedText,
-                        duration: duration
+                        duration: duration,
+                        isImportant: self.isImportant
                     )
                     meeting.person = person
                     
@@ -467,6 +474,19 @@ struct VoiceRecorderView: View {
                     do {
                         try context.save()
                         print("Successfully saved both interaction and meeting records")
+                        
+                        // 중요한 녹음인 경우 UI 업데이트 알림 전송
+                        if self.isImportant {
+                            // NotificationCenter를 통해 UI 업데이트 알림 전송
+                            NotificationCenter.default.post(
+                                name: .importantRecordingAdded, 
+                                object: person,
+                                userInfo: ["interactionId": interaction.id.uuidString]
+                            )
+                            
+                            print("✅ Important recording saved - UI refresh triggered")
+                        }
+                        
                         self.isSaved = true
                         
                         // 카운트다운 시작
@@ -485,7 +505,8 @@ struct VoiceRecorderView: View {
             date: Date(),
             type: selectedInteractionType,
             notes: transcription.isEmpty ? nil : transcription,
-            duration: recorder.recordingDuration
+            duration: recorder.recordingDuration,
+            isImportant: isImportant
         )
         interaction.person = person
         
@@ -504,7 +525,8 @@ struct VoiceRecorderView: View {
             meetingType: meetingType,
             audioFileURL: audioURL.path,
             transcribedText: transcription,
-            duration: recorder.recordingDuration
+            duration: recorder.recordingDuration,
+            isImportant: isImportant
         )
         meeting.person = person
         
@@ -530,6 +552,19 @@ struct VoiceRecorderView: View {
         do {
             try context.save()
             print("Successfully saved both records with transcription")
+            
+            // 중요한 녹음인 경우 UI 업데이트 알림 전송
+            if isImportant {
+                // NotificationCenter를 통해 UI 업데이트 알림 전송
+                NotificationCenter.default.post(
+                    name: .importantRecordingAdded, 
+                    object: person,
+                    userInfo: ["interactionId": interaction.id.uuidString]
+                )
+                
+                print("✅ Important recording saved - UI refresh triggered")
+            }
+            
             isSaved = true
             
             // 카운트다운 시작

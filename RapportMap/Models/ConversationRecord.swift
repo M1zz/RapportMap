@@ -15,6 +15,7 @@ final class ConversationRecord {
     var content: String                 // 대화 내용 또는 상태 정보
     var notes: String?                  // 추가 메모
     var isResolved: Bool                // 해결 여부 (질문 답변, 약속 이행 등)
+    var isImportant: Bool               // 중요한 기록 여부 (놓치면 안되는 것들에 표시)
     var priority: ConversationPriority  // 우선순위
     var tags: [String]                  // 태그들 (검색이나 분류용)
     
@@ -34,6 +35,7 @@ final class ConversationRecord {
         content: String,
         notes: String? = nil,
         isResolved: Bool = false,
+        isImportant: Bool = false,
         priority: ConversationPriority = .normal,
         tags: [String] = []
     ) {
@@ -45,21 +47,20 @@ final class ConversationRecord {
         self.content = content
         self.notes = notes
         self.isResolved = isResolved
+        self.isImportant = isImportant
         self.priority = priority
         self.tags = tags
     }
 }
 
 /// 대화/상태 타입을 정의하는 열거형
-enum ConversationType: String, Codable, CaseIterable {
+enum ConversationType: String, Codable, CaseIterable, Hashable {
     case question = "question"          // 받은 질문
     case concern = "concern"           // 고민 상담
     case promise = "promise"           // 약속
     case update = "update"             // 근황 업데이트
     case feedback = "feedback"         // 피드백
-    case request = "request"           // 요청사항
     case achievement = "achievement"    // 성취나 좋은 소식
-    case problem = "problem"           // 문제나 어려움
     
     /// 타입별 한국어 이름
     var title: String {
@@ -69,9 +70,7 @@ enum ConversationType: String, Codable, CaseIterable {
         case .promise: return "약속"
         case .update: return "근황"
         case .feedback: return "피드백"
-        case .request: return "요청"
         case .achievement: return "성취"
-        case .problem: return "문제"
         }
     }
     
@@ -83,9 +82,7 @@ enum ConversationType: String, Codable, CaseIterable {
         case .promise: return "🤝"
         case .update: return "📰"
         case .feedback: return "💭"
-        case .request: return "🙋‍♂️"
         case .achievement: return "🎉"
-        case .problem: return "⚠️"
         }
     }
     
@@ -97,9 +94,7 @@ enum ConversationType: String, Codable, CaseIterable {
         case .promise: return "hand.raised"
         case .update: return "newspaper"
         case .feedback: return "bubble.left.and.bubble.right"
-        case .request: return "hand.raised"
         case .achievement: return "star.circle"
-        case .problem: return "exclamationmark.triangle"
         }
     }
     
@@ -111,9 +106,7 @@ enum ConversationType: String, Codable, CaseIterable {
         case .promise: return .green
         case .update: return .purple
         case .feedback: return .pink
-        case .request: return .cyan
         case .achievement: return .yellow
-        case .problem: return .red
         }
     }
 }

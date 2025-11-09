@@ -15,20 +15,24 @@ struct QuickRecordSheet: View {
     
     @Bindable var person: Person
     
-    @State private var recentConcerns: String = ""
-    @State private var receivedQuestions: String = ""
-    @State private var unresolvedPromises: String = ""
-    @State private var unansweredCount: Int = 0
+    // 선택된 타입과 내용
+    @State private var selectedType: ConversationType = .concern
+    @State private var content: String = ""
     @State private var lastContact: Date?
     @State private var hasContactDate: Bool = false
     
+    // 타입별 플레이스홀더
+    private var placeholder: String {
+        switch selectedType {
+        case .concern: return "어떤 고민을 상담했나요?"
+        case .question: return "어떤 질문을 받았나요?"
+        case .promise: return "어떤 약속을 했나요?"
+        default: return "내용을 입력하세요"
+        }
+    }
+    
     init(person: Person) {
         self.person = person
-        
-        self._recentConcerns = State(initialValue: person.currentConcerns.first ?? "")
-        self._receivedQuestions = State(initialValue: person.allReceivedQuestions.first ?? "")
-        self._unresolvedPromises = State(initialValue: person.currentUnresolvedPromises.first ?? "")
-        self._unansweredCount = State(initialValue: person.currentUnansweredCount)
         self._lastContact = State(initialValue: person.lastContact)
         self._hasContactDate = State(initialValue: person.lastContact != nil)
     }
@@ -50,109 +54,35 @@ struct QuickRecordSheet: View {
                     .padding(.vertical, 4)
                 }
                 
-                Section("📞 연락 기록") {
-                    Toggle("방금 연락했음", isOn: $hasContactDate)
+                Section("대화 타입 선택") {
+                    Picker("타입", selection: $selectedType) {
+                        ForEach([ConversationType.concern, .question, .promise], id: \.self) { type in
+                            Text("\(type.emoji) \(type.title)")
+                                .tag(type)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+                
+                Section("대화 내용") {
+                    TextField(placeholder, text: $content, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+                
+                Section("연락 날짜") {
+                    Toggle("연락 날짜 기록", isOn: $hasContactDate)
                     
                     if hasContactDate {
-                        DatePicker("연락 시간", selection: Binding(
-                            get: { lastContact ?? Date() },
-                            set: { lastContact = $0 }
-                        ), displayedComponents: [.date, .hourAndMinute])
-                        .datePickerStyle(.compact)
-                        
-                        // 빠른 시간 선택
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
-                            Button("지금") {
-                                lastContact = Date()
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            
-                            Button("1시간 전") {
-                                lastContact = Date().addingTimeInterval(-3600)
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            
-                            Button("오늘 오전") {
-                                lastContact = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date())
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                    }
-                }
-                
-                Section("💬 대화 상태") {
-                    Stepper(value: $unansweredCount, in: 0...20) {
-                        Text("미해결 대화: \(unansweredCount)개")
-                    }
-                    
-                    // 소홀함 상태는 자동으로 계산되어 표시
-                    if person.isNeglected {
-                        HStack {
-                            Text("⚠️")
-                            Text("관계가 소홀해짐")
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                }
-                
-                Section(header: Text("🧠 최근의 고민"), footer: Text("예: 이직 고민, 건강 문제, 인간관계 등")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)) {
-                    TextField("이 사람이 최근에 고민하고 있는 것은?", text: $recentConcerns, axis: .vertical)
-                        .lineLimit(3...6)
-                        .autocorrectionDisabled(false)
-                }
-                
-                Section(header: Text("❓ 받았던 질문"), footer: Text("예: 추천 요청, 조언 구함, 도움 요청 등")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)) {
-                    TextField("이 사람에게 받은 질문이나 요청사항은?", text: $receivedQuestions, axis: .vertical)
-                        .lineLimit(3...6)
-                        .autocorrectionDisabled(false)
-                }
-                
-                Section(header: Text("🤝 미해결된 약속"), footer: Text("예: 약속한 만남, 전해줄 정보, 도와주기로 한 일 등")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)) {
-                    TextField("아직 지키지 못한 약속이나 해야 할 일은?", text: $unresolvedPromises, axis: .vertical)
-                        .lineLimit(3...6)
-                        .autocorrectionDisabled(false)
-                }
-                
-                // 미리보기 섹션
-                if !recentConcerns.isEmpty || !receivedQuestions.isEmpty || !unresolvedPromises.isEmpty || unansweredCount > 0 {
-                    Section("📋 기록 미리보기") {
-                        VStack(alignment: .leading, spacing: 12) {
-                            if !recentConcerns.isEmpty {
-                                PreviewCard(icon: "🧠", title: "고민", content: recentConcerns, color: Color.purple)
-                            }
-                            
-                            if !receivedQuestions.isEmpty {
-                                PreviewCard(icon: "❓", title: "질문", content: receivedQuestions, color: Color.blue)
-                            }
-                            
-                            if !unresolvedPromises.isEmpty {
-                                PreviewCard(icon: "🤝", title: "약속", content: unresolvedPromises, color: Color.red)
-                            }
-                            
-                            if unansweredCount > 0 {
-                                HStack(spacing: 8) {
-                                    Text("💬")
-                                        .font(.caption)
-                                    Text("미해결 대화 \(unansweredCount)개")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(Color.orange)
-                                }
-                            }
-                        }
+                        DatePicker("언제 연락했나요?", 
+                                 selection: Binding(
+                                    get: { lastContact ?? Date() },
+                                    set: { lastContact = $0 }
+                                 ),
+                                 displayedComponents: [.date, .hourAndMinute])
                     }
                 }
             }
-            .navigationTitle("대화 기록")
+            .navigationTitle("빠른 대화 기록")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -166,51 +96,29 @@ struct QuickRecordSheet: View {
                         saveRecord()
                         dismiss()
                     }
+                    .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
     }
     
     private func saveRecord() {
-        // 새로운 대화 기록 시스템을 사용하여 저장
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // 고민사항 저장
-        let trimmedConcerns = recentConcerns.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedConcerns.isEmpty {
-            let _ = person.addConversationRecord(
-                type: .concern,
-                content: trimmedConcerns,
-                priority: .normal,
-                date: Date()
-            )
-            context.insert(person.conversationRecords.last!)
-        }
+        guard !trimmedContent.isEmpty else { return }
         
-        // 받은 질문 저장
-        let trimmedQuestions = receivedQuestions.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedQuestions.isEmpty {
-            let _ = person.addConversationRecord(
-                type: .question,
-                content: trimmedQuestions,
-                priority: .normal,
-                date: Date()
-            )
-            context.insert(person.conversationRecords.last!)
-        }
+        // 선택된 타입에 따라 우선순위 설정
+        let priority: ConversationPriority = selectedType == .promise ? .high : .normal
         
-        // 미해결 약속 저장
-        let trimmedPromises = unresolvedPromises.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedPromises.isEmpty {
-            let _ = person.addConversationRecord(
-                type: .promise,
-                content: trimmedPromises,
-                priority: .high,
-                date: Date()
-            )
-            context.insert(person.conversationRecords.last!)
-        }
-        
-        // 소홀함 상태는 자동으로 계산됨 (computed property)
+        // 대화 기록 저장 (모두 중요한 기록으로 설정)
+        let record = person.addConversationRecord(
+            type: selectedType,
+            content: trimmedContent,
+            priority: priority,
+            isImportant: true,
+            date: Date()
+        )
+        context.insert(record)
         
         // 연락 날짜 저장
         if hasContactDate {
@@ -220,45 +128,9 @@ struct QuickRecordSheet: View {
         // 관계 상태 업데이트
         person.updateRelationshipState()
         
-        // 데이터베이스 저장
-        do {
-            try context.save()
-            print("✅ \(person.name)님의 대화 기록 저장 완료")
-            
-            // 햅틱 피드백
-            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-            impactFeedback.impactOccurred()
-        } catch {
-            print("❌ 대화 기록 저장 실패: \(error)")
-        }
-    }
-}
-
-// MARK: - PreviewCard (Helper)
-struct PreviewCard: View {
-    let icon: String
-    let title: String
-    let content: String
-    let color: Color
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(icon)
-                    .font(.caption)
-                Text(title)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(color)
-            }
-            
-            Text(content)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(color.opacity(0.1))
-        .cornerRadius(8)
+        // 저장
+        try? context.save()
+        
+        print("✅ \(selectedType.title) 기록 저장됨: isImportant = \(record.isImportant)")
     }
 }
