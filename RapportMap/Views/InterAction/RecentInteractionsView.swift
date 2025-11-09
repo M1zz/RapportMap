@@ -456,7 +456,7 @@ struct InteractionHistoryView: View {
         case all = "전체"
         case mentoring = "멘토링"
         case meal = "식사"
-        case contact = "연락"
+        case contact = "스몰토크"
         
         var interactionType: InteractionType? {
             switch self {

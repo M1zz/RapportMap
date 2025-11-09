@@ -43,7 +43,7 @@ enum InteractionType: String, Codable, CaseIterable {
         switch self {
         case .mentoring: return "멘토링"
         case .meal: return "식사"
-        case .contact: return "연락"
+        case .contact: return "스몰토크"
         case .meeting: return "만남"
         case .call: return "통화"
         case .message: return "메시지"

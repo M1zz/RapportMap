@@ -18,11 +18,27 @@ struct VoiceRecorderView: View {
     let person: Person
     
     @StateObject private var recorder = VoiceRecorder()
-    @State private var selectedMeetingType: MeetingType = .mentoring
-    @State private var showingSaveConfirm = false
+    @State private var selectedInteractionType: InteractionType = .mentoring
+    @State private var isSaved = false
     @State private var showingShareSheet = false
     @State private var showingTranscriptView = false
     @State private var currentTranscript = ""
+    @State private var remainingTime: Double = 0.0
+    @State private var dismissTimer: Timer?
+    
+    // 음성 녹음에 적합한 상호작용 유형만 필터링
+    private let voiceRecordingInteractionTypes: [InteractionType] = [.mentoring, .meal, .contact]
+    
+    // 저장 상태 텍스트를 계산하는 computed property
+    private var saveStatusText: String {
+        if isSaved {
+            return "저장 완료"
+        } else if recorder.isTranscribing {
+            return "저장 중..."
+        } else {
+            return "저장하기"
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -45,6 +61,76 @@ struct VoiceRecorderView: View {
                         Text(formatDuration(recorder.recordingDuration))
                             .font(.system(.title3, design: .monospaced))
                             .foregroundStyle(.secondary)
+                    } else if recorder.audioFileURL != nil {
+                        if isSaved {
+                            // 저장 완료 상태
+                            ZStack {
+                                // 배경 원
+                                Circle()
+                                    .fill(Color.green.gradient)
+                                    .frame(width: 120, height: 120)
+                                
+                                // 카운트다운 진행 바 (3초 동안)
+                                if remainingTime > 0 {
+                                    Circle()
+                                        .trim(from: 0, to: CGFloat(3.0 - remainingTime) / 3.0)
+                                        .stroke(Color.white, lineWidth: 4)
+                                        .frame(width: 110, height: 110)
+                                        .rotationEffect(.degrees(-90))
+                                        .animation(.linear(duration: 0.1), value: remainingTime)
+                                }
+                                
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 50))
+                                    .foregroundStyle(.white)
+                            }
+                            
+                            Text("녹음 완료됨")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                            
+                            // 저장 완료 후 자동 닫힘 카운트다운 표시
+                            if remainingTime > 0 {
+                                VStack(spacing: 8) {
+                                    Text("저장이 완료되었습니다")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.green)
+                                    
+                                    Text("\(Int(remainingTime))초 후 자동으로 닫힙니다")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.top, 8)
+                            }
+                        } else {
+                            // 저장하기 버튼 (큰 사이즈)
+                            Button {
+                                saveMeeting()
+                            } label: {
+                                VStack(spacing: 16) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color.blue.gradient)
+                                            .frame(width: 120, height: 120)
+                                        
+                                        if recorder.isTranscribing {
+                                            ProgressView()
+                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                                .scaleEffect(1.5)
+                                        } else {
+                                            Image(systemName: "square.and.arrow.down.fill")
+                                                .font(.system(size: 50))
+                                                .foregroundStyle(.white)
+                                        }
+                                    }
+                                    
+                                    Text(saveStatusText)
+                                        .font(.title2)
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                            .disabled(recorder.isTranscribing)
+                        }
                     } else {
                         // 녹음 준비 상태
                         ZStack {
@@ -67,20 +153,24 @@ struct VoiceRecorderView: View {
                 
                 Spacer()
                 
-                // 만남 타입 선택
+                // 상호작용 유형 선택
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("만남 유형")
+                    Text("상호작용 유형")
                         .font(.headline)
                     
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            ForEach(MeetingType.allCases, id: \.self) { type in
-                                MeetingTypeButton(
+                            ForEach(voiceRecordingInteractionTypes, id: \.self) { type in
+                                InteractionTypeButton(
                                     type: type,
-                                    isSelected: selectedMeetingType == type
+                                    isSelected: selectedInteractionType == type
                                 ) {
-                                    selectedMeetingType = type
+                                    // 녹음 완료 후에는 상호작용 유형 변경 불가
+                                    if recorder.audioFileURL == nil {
+                                        selectedInteractionType = type
+                                    }
                                 }
+                                .disabled(recorder.audioFileURL != nil) // 녹음 완료 후 비활성화
                             }
                         }
                         .padding(.horizontal)
@@ -91,15 +181,14 @@ struct VoiceRecorderView: View {
                 // 컨트롤 버튼들
                 VStack(spacing: 20) {
                     if recorder.isRecording {
-                        // 녹음 중 - 중지 버튼
+                        // 녹음 중 - 녹음 완료 버튼
                         Button {
                             recorder.stopRecording()
-                            showingSaveConfirm = true
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "stop.circle.fill")
                                     .font(.system(size: 24))
-                                Text("녹음 중지")
+                                Text("녹음 완료")
                                     .font(.headline)
                             }
                             .frame(maxWidth: .infinity)
@@ -109,26 +198,11 @@ struct VoiceRecorderView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         .padding(.horizontal)
-                    } else if recorder.audioFileURL != nil {
-                        // 녹음 완료 상태 - 액션 버튼들
+                    } else if recorder.audioFileURL != nil && isSaved {
+                        // 저장 완료 후 액션 버튼들
                         VStack(spacing: 16) {
                             // 주요 액션 버튼들
                             HStack(spacing: 16) {
-                                // 저장 버튼
-                                Button {
-                                    saveMeeting()
-                                } label: {
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 32))
-                                            .foregroundStyle(.green)
-                                        Text("저장")
-                                            .font(.caption)
-                                            .foregroundStyle(.primary)
-                                    }
-                                }
-                                .disabled(recorder.isTranscribing)
-                                
                                 // 전사 보기 버튼
                                 Button {
                                     showingTranscriptView = true
@@ -161,6 +235,13 @@ struct VoiceRecorderView: View {
                             
                             // 새로운 녹음 시작 버튼
                             Button {
+                                // 타이머 정리
+                                dismissTimer?.invalidate()
+                                dismissTimer = nil
+                                remainingTime = 0
+                                
+                                // 상태 초기화
+                                isSaved = false
                                 recorder.reset()
                             } label: {
                                 HStack(spacing: 12) {
@@ -204,7 +285,7 @@ struct VoiceRecorderView: View {
             }
             .padding(.bottom, 50)
         }
-        .navigationTitle("만남 기록하기")
+        .navigationTitle("상호작용 기록하기")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -216,22 +297,7 @@ struct VoiceRecorderView: View {
                 }
             }
         }
-        .confirmationDialog("녹음 완료", isPresented: $showingSaveConfirm) {
-            Button("저장하기") {
-                if !recorder.isTranscribing {
-                    saveMeeting()
-                }
-            }
-            .disabled(recorder.isTranscribing)
-            Button("계속 작업") {
-                // 아무것도 하지 않음 - 녹음 완료 상태를 유지
-            }
-            Button("취소", role: .cancel) {
-                recorder.reset()
-            }
-        } message: {
-            Text("녹음이 완료되었습니다. 어떻게 하시겠습니까?")
-        }
+
         .sheet(isPresented: $showingShareSheet) {
             if let audioURL = recorder.audioFileURL {
                 ShareSheet(items: [audioURL])
@@ -244,13 +310,25 @@ struct VoiceRecorderView: View {
                 transcript: $currentTranscript
             )
         }
+        .onAppear {
+            print("VoiceRecorderView appeared")
+        }
+        .onDisappear {
+            // 화면이 사라질 때 타이머 정리
+            dismissTimer?.invalidate()
+            dismissTimer = nil
+        }
     }
     
     private func saveMeeting() {
+        print("saveMeeting() called")
+        
         guard let audioURL = recorder.audioFileURL else {
             print("Audio URL is nil")
             return
         }
+        
+        print("Audio URL exists: \(audioURL.path)")
         
         // 이미 저장 중이라면 중복 실행 방지
         if recorder.isTranscribing {
@@ -258,22 +336,34 @@ struct VoiceRecorderView: View {
             return
         }
         
+        // 이미 저장되었다면 중복 실행 방지
+        if isSaved {
+            print("Already saved")
+            return
+        }
+        
+        print("Starting save process...")
+        
         // 최종 전사가 있으면 사용, 없으면 비동기로 처리
         if !recorder.finalTranscription.isEmpty {
-            createMeetingRecord(with: recorder.finalTranscription, audioURL: audioURL)
+            print("Using existing transcription: \(recorder.finalTranscription.prefix(50))...")
+            createBothRecords(with: recorder.finalTranscription, audioURL: audioURL)
         } else {
+            print("Starting transcription process...")
             // 비동기 전사 실행 - 중복 방지를 위해 상태 변경
             recorder.isTranscribing = true
             
             // 필요한 값들을 직접 캡처
             let context = self.context
             let person = self.person
-            let meetingType = self.selectedMeetingType
+            let interactionType = self.selectedInteractionType
             let duration = recorder.recordingDuration
             let dismiss = self.dismiss
             
             recorder.transcribeAudio { [weak recorder] (transcribedText: String) in
                 DispatchQueue.main.async {
+                    print("Transcription completed: \(transcribedText.prefix(50))...")
+                    
                     // 중복 실행 방지 체크
                     guard recorder?.isTranscribing == true else {
                         print("Transcription already completed or cancelled")
@@ -282,6 +372,25 @@ struct VoiceRecorderView: View {
                     
                     // 상태 리셋
                     recorder?.isTranscribing = false
+                    
+                    // InteractionRecord 생성 (새로운 방식)
+                    let interaction = InteractionRecord(
+                        date: Date(),
+                        type: interactionType,
+                        notes: transcribedText.isEmpty ? nil : transcribedText,
+                        duration: duration
+                    )
+                    interaction.person = person
+                    
+                    // MeetingRecord도 생성 (기존 히스토리 유지를 위해)
+                    let meetingType: MeetingType = {
+                        switch interactionType {
+                        case .mentoring: return .mentoring
+                        case .meal: return .meal
+                        case .contact: return .general
+                        default: return .general
+                        }
+                    }()
                     
                     let meeting = MeetingRecord(
                         date: Date(),
@@ -292,38 +401,82 @@ struct VoiceRecorderView: View {
                     )
                     meeting.person = person
                     
+                    context.insert(interaction)
                     context.insert(meeting)
                     
                     do {
                         try context.save()
-                        print("Successfully saved meeting record")
-                        dismiss()
+                        print("Successfully saved both interaction and meeting records")
+                        self.isSaved = true
+                        
+                        // 카운트다운 시작
+                        self.startDismissCountdown()
                     } catch {
-                        print("Error saving meeting record: \(error)")
+                        print("Error saving records: \(error)")
                     }
                 }
             }
         }
     }
     
-    private func createMeetingRecord(with transcription: String, audioURL: URL) {
+    private func createBothRecords(with transcription: String, audioURL: URL) {
+        // InteractionRecord 생성 (새로운 상호작용 시스템)
+        let interaction = InteractionRecord(
+            date: Date(),
+            type: selectedInteractionType,
+            notes: transcription.isEmpty ? nil : transcription,
+            duration: recorder.recordingDuration
+        )
+        interaction.person = person
+        
+        // MeetingRecord도 생성 (기존 시스템과 호환성 유지)
+        let meetingType: MeetingType = {
+            switch selectedInteractionType {
+            case .mentoring: return .mentoring
+            case .meal: return .meal
+            case .contact: return .general
+            default: return .general
+            }
+        }()
+        
         let meeting = MeetingRecord(
             date: Date(),
-            meetingType: selectedMeetingType,
+            meetingType: meetingType,
             audioFileURL: audioURL.path,
             transcribedText: transcription,
             duration: recorder.recordingDuration
         )
         meeting.person = person
         
+        context.insert(interaction)
         context.insert(meeting)
         
         do {
             try context.save()
-            print("Successfully saved meeting record with transcription")
-            dismiss()
+            print("Successfully saved both records with transcription")
+            isSaved = true
+            
+            // 카운트다운 시작
+            startDismissCountdown()
         } catch {
-            print("Error saving meeting record with transcription: \(error)")
+            print("Error saving both records with transcription: \(error)")
+        }
+    }
+    
+    // 자동 닫힘 카운트다운 함수
+    private func startDismissCountdown() {
+        remainingTime = 3.0 // 3초 카운트다운 (실수형)
+        
+        dismissTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+            DispatchQueue.main.async {
+                self.remainingTime -= 0.1
+                
+                if self.remainingTime <= 0 {
+                    timer.invalidate()
+                    self.dismissTimer = nil
+                    self.dismiss()
+                }
+            }
         }
     }
 }
@@ -335,9 +488,9 @@ private func formatDuration(_ duration: TimeInterval) -> String {
 }
 
 
-// MARK: - MeetingTypeButton
-struct MeetingTypeButton: View {
-    let type: MeetingType
+// MARK: - InteractionTypeButton
+struct InteractionTypeButton: View {
+    let type: InteractionType
     let isSelected: Bool
     let action: () -> Void
     
@@ -346,18 +499,18 @@ struct MeetingTypeButton: View {
             VStack(spacing: 6) {
                 Text(type.emoji)
                     .font(.title)
-                Text(type.rawValue)
+                Text(type.title)
                     .font(.caption)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Color.blue.opacity(0.15) : Color(.systemGray6))
+                    .fill(isSelected ? type.color.opacity(0.15) : Color(.systemGray6))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                    .stroke(isSelected ? type.color : Color.clear, lineWidth: 2)
             )
         }
         .buttonStyle(.plain)
@@ -382,6 +535,8 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     override init() {
         super.init()
         setupPermissions()
+        // 앱 시작 시 오래된 파일 정리
+        cleanupOldAudioFiles()
     }
     
     private func setupPermissions() {
@@ -390,6 +545,30 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         
         // 음성 인식 권한
         SFSpeechRecognizer.requestAuthorization { _ in }
+    }
+    
+    // 30일 이상된 오디오 파일 자동 정리
+    private func cleanupOldAudioFiles() {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let calendar = Calendar.current
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        
+        do {
+            let files = try FileManager.default.contentsOfDirectory(at: documentsPath, includingPropertiesForKeys: [.creationDateKey], options: [])
+            
+            for file in files {
+                if file.pathExtension == "m4a" && (file.lastPathComponent.hasPrefix("recording_") || file.lastPathComponent.hasPrefix("meeting_")) {
+                    let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+                    if let creationDate = attributes[.creationDate] as? Date,
+                       creationDate < thirtyDaysAgo {
+                        try FileManager.default.removeItem(at: file)
+                        print("Deleted old audio file: \(file.lastPathComponent)")
+                    }
+                }
+            }
+        } catch {
+            print("Error cleaning up old files: \(error)")
+        }
     }
     
     func startRecording() {
@@ -416,6 +595,8 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         levelTimer = nil
         currentAudioLevel = 0.0
         
+        print("Recording stopped, audio file URL: \(audioFileURL?.path ?? "nil")")
+        
         // 최종 전사 실행
         performFinalTranscription()
     }
@@ -435,7 +616,13 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         try? audioSession.setActive(true)
         
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let audioFilename = documentsPath.appendingPathComponent("meeting_\(Date().timeIntervalSince1970).m4a")
+        
+        // 더 의미있는 파일명 생성
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let timestamp = dateFormatter.string(from: Date())
+        
+        let audioFilename = documentsPath.appendingPathComponent("recording_\(timestamp).m4a")
         
         let settings = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
