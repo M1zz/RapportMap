@@ -25,6 +25,7 @@ struct VoiceRecorderView: View {
     @State private var currentTranscript = ""
     @State private var remainingTime: Double = 0.0
     @State private var dismissTimer: Timer?
+    @State private var isImportant = false
     
     // 음성 녹음에 적합한 상호작용 유형만 필터링
     private let voiceRecordingInteractionTypes: [InteractionType] = [.mentoring, .meal, .contact]
@@ -89,6 +90,18 @@ struct VoiceRecorderView: View {
                                 .font(.title2)
                                 .fontWeight(.semibold)
                             
+                            // 중요한 녹음이었다면 별표시
+                            if isImportant {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "star.fill")
+                                        .foregroundStyle(.yellow)
+                                    Text("중요한 녹음으로 저장됨")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
+                                .padding(.top, 4)
+                            }
+                            
                             // 저장 완료 후 자동 닫힘 카운트다운 표시
                             if remainingTime > 0 {
                                 VStack(spacing: 8) {
@@ -104,32 +117,62 @@ struct VoiceRecorderView: View {
                             }
                         } else {
                             // 저장하기 버튼 (큰 사이즈)
-                            Button {
-                                saveMeeting()
-                            } label: {
-                                VStack(spacing: 16) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(Color.blue.gradient)
-                                            .frame(width: 120, height: 120)
-                                        
-                                        if recorder.isTranscribing {
-                                            ProgressView()
-                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                                .scaleEffect(1.5)
-                                        } else {
-                                            Image(systemName: "square.and.arrow.down.fill")
-                                                .font(.system(size: 50))
-                                                .foregroundStyle(.white)
+                            VStack(spacing: 20) {
+                                Button {
+                                    saveMeeting()
+                                } label: {
+                                    VStack(spacing: 16) {
+                                        ZStack {
+                                            Circle()
+                                                .fill(Color.blue.gradient)
+                                                .frame(width: 120, height: 120)
+                                            
+                                            if recorder.isTranscribing {
+                                                ProgressView()
+                                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                                    .scaleEffect(1.5)
+                                            } else {
+                                                Image(systemName: "square.and.arrow.down.fill")
+                                                    .font(.system(size: 50))
+                                                    .foregroundStyle(.white)
+                                            }
                                         }
+                                        
+                                        Text(saveStatusText)
+                                            .font(.title2)
+                                            .fontWeight(.semibold)
                                     }
-                                    
-                                    Text(saveStatusText)
-                                        .font(.title2)
-                                        .fontWeight(.semibold)
+                                }
+                                .disabled(recorder.isTranscribing)
+                                
+                                // 중요도 토글 버튼
+                                HStack(spacing: 12) {
+                                    Button {
+                                        isImportant.toggle()
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: isImportant ? "star.fill" : "star")
+                                                .font(.system(size: 20))
+                                                .foregroundStyle(isImportant ? .yellow : .gray)
+                                            
+                                            Text(isImportant ? "중요한 녹음" : "중요도 표시")
+                                                .font(.subheadline)
+                                                .foregroundStyle(isImportant ? .orange : .primary)
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 20)
+                                                .fill(isImportant ? Color.yellow.opacity(0.1) : Color.gray.opacity(0.1))
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 20)
+                                                .stroke(isImportant ? Color.yellow : Color.gray, lineWidth: 1)
+                                        )
+                                    }
+                                    .disabled(recorder.isTranscribing)
                                 }
                             }
-                            .disabled(recorder.isTranscribing)
                         }
                     } else {
                         // 녹음 준비 상태
@@ -242,6 +285,7 @@ struct VoiceRecorderView: View {
                                 
                                 // 상태 초기화
                                 isSaved = false
+                                isImportant = false // 중요도 상태도 초기화
                                 recorder.reset()
                             } label: {
                                 HStack(spacing: 12) {
@@ -401,6 +445,22 @@ struct VoiceRecorderView: View {
                     )
                     meeting.person = person
                     
+                    // 중요한 녹음인 경우 파일명에 important 표시 추가
+                    if self.isImportant {
+                        // 파일명 변경하여 중요도 표시
+                        let oldURL = audioURL
+                        let newFilename = oldURL.deletingPathExtension().lastPathComponent + "_important.m4a"
+                        let newURL = oldURL.deletingLastPathComponent().appendingPathComponent(newFilename)
+                        
+                        do {
+                            try FileManager.default.moveItem(at: oldURL, to: newURL)
+                            meeting.audioFileURL = newURL.path
+                            print("Marked recording as important: \(newFilename)")
+                        } catch {
+                            print("Failed to rename important file: \(error)")
+                        }
+                    }
+                    
                     context.insert(interaction)
                     context.insert(meeting)
                     
@@ -447,6 +507,22 @@ struct VoiceRecorderView: View {
             duration: recorder.recordingDuration
         )
         meeting.person = person
+        
+        // 중요한 녹음인 경우 파일명에 important 표시 추가
+        if isImportant {
+            // 파일명 변경하여 중요도 표시
+            let oldURL = audioURL
+            let newFilename = oldURL.deletingPathExtension().lastPathComponent + "_important.m4a"
+            let newURL = oldURL.deletingLastPathComponent().appendingPathComponent(newFilename)
+            
+            do {
+                try FileManager.default.moveItem(at: oldURL, to: newURL)
+                meeting.audioFileURL = newURL.path
+                print("Marked recording as important: \(newFilename)")
+            } catch {
+                print("Failed to rename important file: \(error)")
+            }
+        }
         
         context.insert(interaction)
         context.insert(meeting)
@@ -547,7 +623,7 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         SFSpeechRecognizer.requestAuthorization { _ in }
     }
     
-    // 30일 이상된 오디오 파일 자동 정리
+    // 30일 이상된 오디오 파일 자동 정리 (중요한 파일 제외)
     private func cleanupOldAudioFiles() {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let calendar = Calendar.current
@@ -558,6 +634,12 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             
             for file in files {
                 if file.pathExtension == "m4a" && (file.lastPathComponent.hasPrefix("recording_") || file.lastPathComponent.hasPrefix("meeting_")) {
+                    // 중요한 파일은 삭제하지 않음
+                    if file.lastPathComponent.contains("_important") {
+                        print("Skipping important file: \(file.lastPathComponent)")
+                        continue
+                    }
+                    
                     let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
                     if let creationDate = attributes[.creationDate] as? Date,
                        creationDate < thirtyDaysAgo {
