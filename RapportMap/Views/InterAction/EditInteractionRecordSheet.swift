@@ -21,6 +21,11 @@ struct EditInteractionRecordSheet: View {
     @State private var tempDuration: TimeInterval?
     @State private var hasDuration: Bool
     @State private var showingRecordPicker = false
+    @State private var showingImagePicker = false
+    @State private var showingImageOptions = false
+    @State private var showingCamera = false
+    @State private var selectedImage: UIImage?
+    @State private var selectedPhotoIndex: Int? = nil // 선택된 사진의 인덱스
     
     // 상호작용 타입에 맞는 미팅 기록들 (날짜 역순)
     private var availableMeetingRecords: [MeetingRecord] {
@@ -127,6 +132,97 @@ struct EditInteractionRecordSheet: View {
                     TextField("이번 \(record.type.title)에서 어떤 이야기를 나눴나요?", text: $tempNotes, axis: .vertical)
                         .lineLimit(3...8)
                         .autocorrectionDisabled(false)
+                }
+                
+                // 사진 섹션 - 여러 장 지원
+                Section {
+                    VStack(spacing: 12) {
+                        // 기존 사진들 표시
+                        let allPhotos = record.allPhotosData
+                        if !allPhotos.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(allPhotos.indices, id: \.self) { index in
+                                        if let uiImage = UIImage(data: allPhotos[index]) {
+                                            VStack(spacing: 8) {
+                                                Image(uiImage: uiImage)
+                                                    .resizable()
+                                                    .scaledToFill()
+                                                    .frame(width: 150, height: 150)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                                    .overlay(
+                                                        RoundedRectangle(cornerRadius: 12)
+                                                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                                    )
+                                                
+                                                Button(role: .destructive) {
+                                                    withAnimation {
+                                                        deletePhoto(at: index)
+                                                    }
+                                                } label: {
+                                                    Label("삭제", systemImage: "trash")
+                                                        .font(.caption)
+                                                }
+                                                .buttonStyle(.bordered)
+                                                .controlSize(.small)
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                        
+                        // 사진 추가 버튼
+                        Button {
+                            selectedPhotoIndex = nil // 새 사진 추가
+                            showingImageOptions = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "photo.badge.plus")
+                                    .font(.title3)
+                                    .foregroundStyle(.blue)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(allPhotos.isEmpty ? "사진 추가" : "사진 더 추가")
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    Text("\(record.type.title) 순간을 사진으로 남겨보세요")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundStyle(.blue)
+                            }
+                            .padding(.vertical, 8)
+                        }
+                        
+                        // 모든 사진 삭제 버튼 (사진이 있을 때만)
+                        if !allPhotos.isEmpty {
+                            Button(role: .destructive) {
+                                withAnimation {
+                                    record.removeAllPhotos()
+                                }
+                            } label: {
+                                HStack {
+                                    Image(systemName: "trash")
+                                    Text("모든 사진 삭제")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("사진")
+                        Spacer()
+                        if !record.allPhotosData.isEmpty {
+                            Text("\(record.allPhotosData.count)장")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 
                 // 모든 상호작용 타입에 대해 녹음 파일 연결 섹션 추가
@@ -339,10 +435,53 @@ struct EditInteractionRecordSheet: View {
                     }
                 )
             }
+            .sheet(isPresented: $showingImagePicker) {
+                ImagePicker(image: $selectedImage)
+            }
+            .sheet(isPresented: $showingCamera) {
+                CameraPicker(image: $selectedImage)
+            }
+            .confirmationDialog("사진 선택", isPresented: $showingImageOptions) {
+                Button("카메라로 촬영") {
+                    showingCamera = true
+                }
+                Button("앨범에서 선택") {
+                    showingImagePicker = true
+                }
+                Button("취소", role: .cancel) { }
+            }
+            .onChange(of: selectedImage) { oldValue, newValue in
+                if let image = newValue {
+                    if let imageData = image.jpegData(compressionQuality: 0.8) {
+                        // 새 사진 추가
+                        record.addPhoto(imageData)
+                    }
+                    selectedImage = nil // 다음 추가를 위해 초기화
+                }
+            }
         }
         .onDisappear {
             if !hasDuration {
                 tempDuration = nil
+            }
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    /// 특정 인덱스의 사진 삭제
+    private func deletePhoto(at index: Int) {
+        let allPhotos = record.allPhotosData
+        guard index >= 0 && index < allPhotos.count else { return }
+        
+        // 레거시 photoData인지 확인
+        if index == 0 && record.photoData != nil {
+            record.photoData = nil
+        } else {
+            // photosData 배열에서 삭제 (레거시 photoData가 있으면 인덱스 조정)
+            let adjustedIndex = record.photoData != nil ? index - 1 : index
+            if adjustedIndex >= 0 && adjustedIndex < record.photosData.count {
+                record.photosData.remove(at: adjustedIndex)
             }
         }
     }

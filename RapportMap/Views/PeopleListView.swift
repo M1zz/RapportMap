@@ -540,34 +540,68 @@ struct PersonCard: View {
     
     @ViewBuilder
     private var headerSection: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(person.name)
-                .font(.title)
-                .fontWeight(.bold)
+        HStack(alignment: .top, spacing: 12) {
+            // 프로필 사진 및 관계 상태
+            VStack(spacing: 6) {
+                // 프로필 사진
+                if let imageData = person.profileImageData,
+                   let uiImage = UIImage(data: imageData) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 60, height: 60)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                } else {
+                    Image(systemName: "person.circle.fill")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 60, height: 60)
+                        .foregroundStyle(.gray.opacity(0.5))
+                }
+                
+                // 관계 상태 배지 (프로필 사진 아래)
+                relationshipStatusBadge
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(person.name)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                // iPhone 연락처 연동 상태 표시
+                if isInContacts {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.crop.circle.badge.checkmark")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                        Text("연락처 연동")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                }
+            }
             
             Spacer()
-            
-            relationshipStatusBadge
         }
     }
     
     private var relationshipStatusBadge: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             Circle()
                 .fill(person.state.color)
-                .frame(width: 12, height: 12)
+                .frame(width: 8, height: 8)
             Text(person.state.localizedName)
-                .font(.subheadline)
+                .font(.caption)
                 .fontWeight(.medium)
                 .foregroundStyle(person.state.color)
-            
-            // iPhone 연락처 연동 상태 표시
-            if isInContacts {
-                Image(systemName: "person.crop.circle.badge.checkmark")
-                    .font(.caption)
-                    .foregroundStyle(.green)
-            }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(person.state.color.opacity(0.15))
+        )
     }
     
     private var urgentAlertSection: some View {

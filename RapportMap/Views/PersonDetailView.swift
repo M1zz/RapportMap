@@ -91,6 +91,8 @@ struct PersonDetailView: View {
     @State private var syncSuccessMessage: String? = nil // 동기화 성공 메시지
     @State private var showingSyncSuccess = false // 동기화 성공 알림 표시
     @State private var contactSearchFailedMessage: String? = nil // 연락처 검색 실패 메시지
+    @State private var showingImagePicker = false // 이미지 피커 표시
+    @State private var showingImageSourceOptions = false // 이미지 소스 선택 액션시트
     @StateObject private var contactsManager = ContactsManager.shared
     @Binding var selectedTab: Int
     
@@ -186,6 +188,27 @@ struct PersonDetailView: View {
                     await checkContactSyncStatus()
                 }
             }
+        }
+        .sheet(isPresented: $showingImagePicker) {
+            ImagePicker(imageData: $person.profileImageData) {
+                // 이미지가 선택되면 저장
+                try? context.save()
+            }
+        }
+        .confirmationDialog("프로필 사진 변경", isPresented: $showingImageSourceOptions, titleVisibility: .visible) {
+            Button("사진 찍기") {
+                showingImagePicker = true
+            }
+            Button("앨범에서 선택") {
+                showingImagePicker = true
+            }
+            if person.profileImageData != nil {
+                Button("사진 삭제", role: .destructive) {
+                    person.profileImageData = nil
+                    try? context.save()
+                }
+            }
+            Button("취소", role: .cancel) { }
         }
     }
     
@@ -468,6 +491,56 @@ struct PersonDetailView: View {
     @ViewBuilder
     private var basicInfoSection: some View {
         Section("기본 정보") {
+            // 프로필 사진
+            HStack {
+                Spacer()
+                
+                Button {
+                    showingImageSourceOptions = true
+                } label: {
+                    ZStack(alignment: .bottomTrailing) {
+                        if let imageData = person.profileImageData,
+                           let uiImage = UIImage(data: imageData) {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 120, height: 120)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color.gray.opacity(0.3), lineWidth: 2))
+                        } else {
+                            // 기본 프로필 이미지
+                            ZStack {
+                                Circle()
+                                    .fill(Color.blue.opacity(0.1))
+                                    .frame(width: 120, height: 120)
+                                
+                                Image(systemName: "person.circle.fill")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 80, height: 80)
+                                    .foregroundStyle(.gray)
+                            }
+                        }
+                        
+                        // 편집 버튼
+                        ZStack {
+                            Circle()
+                                .fill(Color.blue)
+                                .frame(width: 36, height: 36)
+                            
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                        }
+                        .offset(x: -5, y: -5)
+                    }
+                }
+                .buttonStyle(.plain)
+                
+                Spacer()
+            }
+            .padding(.vertical, 8)
+            
             TextField("이름", text: $person.name)
             
             HStack {

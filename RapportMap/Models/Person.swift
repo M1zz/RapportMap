@@ -12,6 +12,10 @@ final class Person {
     var contact: String                 // 연락처 (전화번호, 이메일 등)
     var state: RelationshipState        // 현재 관계 상태 (멀어짐/따뜻해지는중/끈끈함)
     
+    // MARK: - 프로필 사진
+    @Attribute(.externalStorage)
+    var profileImageData: Data?         // 프로필 사진 데이터 (JPEG/PNG)
+    
     // MARK: - 상호작용 기록 (기존 호환성 - 자동 계산됨)
     var lastMentoring: Date?            // 마지막 멘토링 날짜 (InteractionRecord에서 자동 계산)
     var lastMeal: Date?                 // 마지막 식사 날짜 (InteractionRecord에서 자동 계산)

@@ -63,6 +63,28 @@ struct InteractionRecordRow: View {
                 
                 // 추가 정보들
                 VStack(alignment: .leading, spacing: 4) {
+                    // 사진들 표시 (가로 스크롤)
+                    if record.hasPhotos {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(record.allPhotosData.indices, id: \.self) { index in
+                                    if let uiImage = UIImage(data: record.allPhotosData[index]) {
+                                        Image(uiImage: uiImage)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 100, height: 100)
+                                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 8)
+                                                    .stroke(record.type.color.opacity(0.3), lineWidth: 1)
+                                            )
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    
                     // 연결된 멘토링 녹음 파일 정보
                     if record.type == .mentoring, let meetingRecord = record.relatedMeetingRecord {
                         HStack(spacing: 4) {

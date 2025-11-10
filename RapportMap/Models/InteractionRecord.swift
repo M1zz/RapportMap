@@ -12,6 +12,14 @@ final class InteractionRecord {
     var location: String? // 만남 장소
     var isImportant: Bool = false // 중요도 표시
     
+    // 상호작용 사진들 (여러 장 저장 가능)
+    @Attribute(.externalStorage)
+    var photoData: Data? // 레거시 호환용 (단일 사진)
+    
+    // 여러 장의 사진 저장 (새로운 방식)
+    @Attribute(.externalStorage)
+    var photosData: [Data] = [] // 여러 장의 사진을 배열로 저장
+    
     @Relationship(deleteRule: .nullify)
     var person: Person?
     
@@ -27,6 +35,8 @@ final class InteractionRecord {
         duration: TimeInterval? = nil,
         location: String? = nil,
         isImportant: Bool = false,
+        photoData: Data? = nil,
+        photosData: [Data] = [],
         relatedMeetingRecord: MeetingRecord? = nil
     ) {
         self.id = id
@@ -36,6 +46,8 @@ final class InteractionRecord {
         self.duration = duration
         self.location = location
         self.isImportant = isImportant
+        self.photoData = photoData
+        self.photosData = photosData
         self.relatedMeetingRecord = relatedMeetingRecord
     }
 }
@@ -110,6 +122,51 @@ extension InteractionRecord {
             return "\(hours)시간 \(remainingMinutes)분"
         } else {
             return "\(minutes)분"
+        }
+    }
+    
+    /// 사진이 있는지 확인 (레거시 photoData 또는 새로운 photosData)
+    var hasPhotos: Bool {
+        return photoData != nil || !photosData.isEmpty
+    }
+    
+    /// 모든 사진 데이터를 배열로 반환 (레거시와 새 방식 통합)
+    var allPhotosData: [Data] {
+        var photos: [Data] = []
+        
+        // 레거시 photoData가 있으면 추가
+        if let photoData = photoData {
+            photos.append(photoData)
+        }
+        
+        // 새로운 photosData 추가
+        photos.append(contentsOf: photosData)
+        
+        return photos
+    }
+    
+    /// 사진 추가 (새로운 방식으로 저장)
+    func addPhoto(_ imageData: Data) {
+        photosData.append(imageData)
+    }
+    
+    /// 특정 인덱스의 사진 삭제
+    func removePhoto(at index: Int) {
+        guard index >= 0 && index < photosData.count else { return }
+        photosData.remove(at: index)
+    }
+    
+    /// 모든 사진 삭제
+    func removeAllPhotos() {
+        photoData = nil
+        photosData.removeAll()
+    }
+    
+    /// 레거시 photoData를 새로운 photosData로 마이그레이션
+    func migratePhotoToPhotos() {
+        if let oldPhotoData = photoData, !photosData.contains(oldPhotoData) {
+            photosData.insert(oldPhotoData, at: 0)
+            photoData = nil // 마이그레이션 후 레거시 필드는 제거
         }
     }
 }
