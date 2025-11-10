@@ -400,6 +400,7 @@ extension Person {
     ///   - duration: 상호작용 지속 시간
     ///   - location: 상호작용 발생 장소
     ///   - relatedMeetingRecord: 연관된 미팅 기록 (멘토링의 경우 녹음 파일)
+    /// - Returns: 생성된 InteractionRecord 인스턴스
     func addInteractionRecord(
         type: InteractionType, 
         date: Date = Date(), 
@@ -407,7 +408,7 @@ extension Person {
         duration: TimeInterval? = nil, 
         location: String? = nil,
         relatedMeetingRecord: MeetingRecord? = nil
-    ) {
+    ) -> InteractionRecord {
         // 새로운 상호작용 기록 생성
         let record = InteractionRecord(
             date: date,
@@ -441,6 +442,8 @@ extension Person {
             // meeting은 별도의 MeetingRecord로 처리
             break
         }
+        
+        return record
     }
     
     /// 특정 타입의 상호작용 기록들을 날짜 역순으로 반환

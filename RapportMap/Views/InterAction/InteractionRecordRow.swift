@@ -149,7 +149,9 @@ struct InteractionRecordRow: View {
         }
         .padding(.vertical, 8)
         .sheet(isPresented: $showingEditSheet) {
-            EditInteractionRecordSheet(record: record)
+            if let person = record.person {
+                EditInteractionRecordSheet(record: record, person: person)
+            }
         }
     }
 }

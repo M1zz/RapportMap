@@ -133,9 +133,32 @@ struct VoiceRecorderView: View {
                                                 .frame(width: 120, height: 120)
                                             
                                             if recorder.isTranscribing {
-                                                ProgressView()
-                                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                                    .scaleEffect(1.5)
+                                                // STT 처리 중 - 진행률 표시
+                                                ZStack {
+                                                    // 배경 원
+                                                    Circle()
+                                                        .stroke(Color.white.opacity(0.3), lineWidth: 8)
+                                                    
+                                                    // 진행률 원
+                                                    Circle()
+                                                        .trim(from: 0, to: recorder.transcriptionProgress)
+                                                        .stroke(Color.white, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                                                        .rotationEffect(.degrees(-90))
+                                                        .animation(.linear(duration: 0.3), value: recorder.transcriptionProgress)
+                                                    
+                                                    // 퍼센트 표시
+                                                    VStack(spacing: 4) {
+                                                        Text("\(Int(recorder.transcriptionProgress * 100))%")
+                                                            .font(.title)
+                                                            .fontWeight(.bold)
+                                                            .foregroundStyle(.white)
+                                                        
+                                                        Text("변환 중")
+                                                            .font(.caption2)
+                                                            .foregroundStyle(.white.opacity(0.8))
+                                                    }
+                                                }
+                                                .frame(width: 100, height: 100)
                                             } else {
                                                 Image(systemName: "square.and.arrow.down.fill")
                                                     .font(.system(size: 50))
@@ -143,9 +166,17 @@ struct VoiceRecorderView: View {
                                             }
                                         }
                                         
-                                        Text(saveStatusText)
-                                            .font(.title2)
-                                            .fontWeight(.semibold)
+                                        VStack(spacing: 4) {
+                                            Text(saveStatusText)
+                                                .font(.title2)
+                                                .fontWeight(.semibold)
+                                            
+                                            if recorder.isTranscribing {
+                                                Text("음성을 텍스트로 변환하는 중...")
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
                                     }
                                 }
                                 .disabled(recorder.isTranscribing)
@@ -635,12 +666,14 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var audioFileURL: URL?
     @Published var finalTranscription = ""
     @Published var isTranscribing = false
+    @Published var transcriptionProgress: Double = 0.0 // STT 진행률 (0.0 ~ 1.0)
     @Published var audioLevels: [Float] = Array(repeating: 0.0, count: 50) // 파형을 위한 오디오 레벨 배열
     @Published var currentAudioLevel: Float = 0.0
     
     private var audioRecorder: AVAudioRecorder?
     private var timer: Timer?
     private var levelTimer: Timer?
+    private var progressTimer: Timer? // STT 진행률 타이머
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "ko-KR"))
     
     override init() {
@@ -723,8 +756,13 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         audioFileURL = nil
         finalTranscription = ""
         isTranscribing = false
+        transcriptionProgress = 0.0
         audioLevels = Array(repeating: 0.0, count: 50)
         currentAudioLevel = 0.0
+        
+        // 타이머 정리
+        progressTimer?.invalidate()
+        progressTimer = nil
     }
     
     private func setupRecorder() {
@@ -800,6 +838,11 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
         
         isTranscribing = true
+        transcriptionProgress = 0.0
+        
+        // 예상 진행률 타이머 시작 (녹음 시간 기반)
+        startProgressTimer()
+        
         let recognitionRequest = SFSpeechURLRecognitionRequest(url: audioURL)
         
         speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
@@ -807,6 +850,9 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 guard let self = self else { return }
                 
                 self.isTranscribing = false
+                self.transcriptionProgress = 1.0
+                self.progressTimer?.invalidate()
+                self.progressTimer = nil
                 
                 if let result = result, result.isFinal {
                     self.finalTranscription = result.bestTranscription.formattedString
@@ -842,6 +888,11 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
         
         isTranscribing = true
+        transcriptionProgress = 0.0
+        
+        // 예상 진행률 타이머 시작
+        startProgressTimer()
+        
         let recognitionRequest = SFSpeechURLRecognitionRequest(url: audioURL)
         
         speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
@@ -855,6 +906,9 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 }
                 
                 self.isTranscribing = false
+                self.transcriptionProgress = 1.0
+                self.progressTimer?.invalidate()
+                self.progressTimer = nil
                 
                 if let result = result {
                     let transcription = result.bestTranscription.formattedString
@@ -865,6 +919,35 @@ class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
                     completion("음성 변환에 실패했습니다.")
                 } else {
                     completion("")
+                }
+            }
+        }
+    }
+    
+    // 예상 진행률 타이머 (녹음 시간 기반으로 예상 진행률 계산)
+    private func startProgressTimer() {
+        transcriptionProgress = 0.0
+        
+        // 녹음 시간에 비례한 예상 처리 시간 계산
+        // 일반적으로 1분 녹음 = 약 3-5초 처리 시간
+        let estimatedProcessingTime = max(3.0, recordingDuration * 0.15) // 최소 3초
+        let updateInterval = 0.1 // 0.1초마다 업데이트
+        let totalSteps = estimatedProcessingTime / updateInterval
+        let progressIncrement = 1.0 / totalSteps
+        
+        progressTimer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            
+            DispatchQueue.main.async {
+                // 95%까지만 자동으로 증가 (나머지 5%는 실제 완료 시)
+                if self.transcriptionProgress < 0.95 {
+                    self.transcriptionProgress += progressIncrement
+                } else {
+                    // 95%에 도달하면 천천히 증가
+                    self.transcriptionProgress += progressIncrement * 0.1
                 }
             }
         }

@@ -14,6 +14,7 @@ struct EditInteractionRecordSheet: View {
     @Environment(\.modelContext) private var context
     
     @Bindable var record: InteractionRecord
+    let person: Person  // 👈 person을 직접 전달받음
     @State private var tempDate: Date
     @State private var tempNotes: String
     @State private var tempLocation: String
@@ -23,8 +24,6 @@ struct EditInteractionRecordSheet: View {
     
     // 상호작용 타입에 맞는 미팅 기록들 (날짜 역순)
     private var availableMeetingRecords: [MeetingRecord] {
-        guard let person = record.person else { return [] }
-        
         let matchingMeetingType: MeetingType
         switch record.type {
         case .mentoring:
@@ -46,8 +45,9 @@ struct EditInteractionRecordSheet: View {
             .sorted { $0.date > $1.date }
     }
     
-    init(record: InteractionRecord) {
+    init(record: InteractionRecord, person: Person) {
         self.record = record
+        self.person = person
         self._tempDate = State(initialValue: record.date)
         self._tempNotes = State(initialValue: record.notes ?? "")
         self._tempLocation = State(initialValue: record.location ?? "")
@@ -354,28 +354,26 @@ struct EditInteractionRecordSheet: View {
         record.duration = hasDuration ? tempDuration : nil
         
         // 기존 lastXXX 필드도 업데이트 (최신 기록인 경우에만)
-        if let person = record.person {
-            let sameTypeRecords = person.getInteractionRecords(ofType: record.type)
-            if sameTypeRecords.first?.id == record.id {
-                // 이것이 해당 타입의 가장 최근 기록이면 lastXXX 업데이트
-                switch record.type {
-                case .mentoring:
-                    person.lastMentoring = record.date
-                    person.mentoringNotes = record.notes
-                case .meal:
-                    person.lastMeal = record.date
-                    person.mealNotes = record.notes
-                case .contact, .call, .message:
-                    person.lastContact = record.date
-                    person.contactNotes = record.notes
-                case .meeting:
-                    break
-                }
+        let sameTypeRecords = person.getInteractionRecords(ofType: record.type)
+        if sameTypeRecords.first?.id == record.id {
+            // 이것이 해당 타입의 가장 최근 기록이면 lastXXX 업데이트
+            switch record.type {
+            case .mentoring:
+                person.lastMentoring = record.date
+                person.mentoringNotes = record.notes
+            case .meal:
+                person.lastMeal = record.date
+                person.mealNotes = record.notes
+            case .contact, .call, .message:
+                person.lastContact = record.date
+                person.contactNotes = record.notes
+            case .meeting:
+                break
             }
-            
-            // 관계 상태 업데이트
-            person.updateRelationshipState()
         }
+        
+        // 관계 상태 업데이트
+        person.updateRelationshipState()
         
         do {
             try context.save()

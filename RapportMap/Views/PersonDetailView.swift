@@ -160,7 +160,7 @@ struct PersonDetailView: View {
         .sheet(isPresented: $showingInteractionEdit) {
             if let selectedType = selectedInteractionType,
                let latestRecord = person.getInteractionRecords(ofType: selectedType).first {
-                EditInteractionRecordSheet(record: latestRecord)
+                EditInteractionRecordSheet(record: latestRecord, person: person)
             }
         }
         .sheet(isPresented: $showingQuickRecord) {
