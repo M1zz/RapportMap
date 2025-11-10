@@ -7,6 +7,7 @@
 
 import Foundation
 import UserNotifications
+import SwiftData
 
 @MainActor
 class NotificationManager {
@@ -26,7 +27,13 @@ class NotificationManager {
     }
     
     /// 액션 리마인더 스케줄링
-    func scheduleActionReminder(for personAction: PersonAction, at date: Date, title: String, body: String) async -> Bool {
+    func scheduleActionReminder(
+        for personAction: PersonAction,
+        at date: Date,
+        title: String,
+        body: String,
+        context: ModelContext? = nil
+    ) async -> Bool {
         guard let person = personAction.person, let action = personAction.action else {
             return false
         }
@@ -36,11 +43,14 @@ class NotificationManager {
         content.body = body
         content.sound = .default
         
-        // 사용자 정보 추가
+        // 사용자 정보 추가 (히스토리 저장을 위해)
         content.userInfo = [
             "personID": person.id.uuidString,
+            "personName": person.name,
             "actionID": action.id.uuidString,
-            "personActionID": personAction.id.uuidString
+            "actionTitle": action.title,
+            "personActionID": personAction.id.uuidString,
+            "notificationType": NotificationHistory.NotificationType.criticalAction.rawValue
         ]
         
         let trigger = UNCalendarNotificationTrigger(
@@ -54,6 +64,16 @@ class NotificationManager {
         do {
             try await UNUserNotificationCenter.current().add(request)
             print("✅ 알림 스케줄링 성공: \(title)")
+            
+            // 히스토리에 저장 (context가 제공된 경우)
+            if let context = context {
+                NotificationHistoryManager.shared.saveCriticalActionNotification(
+                    person: person,
+                    action: personAction,
+                    context: context
+                )
+            }
+            
             return true
         } catch {
             print("❌ 알림 스케줄링 실패: \(error)")

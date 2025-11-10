@@ -1085,6 +1085,7 @@ struct ActionResultInputSheet: View {
 // MARK: - ReminderSettingSheet (새로 추가!)
 struct ReminderSettingSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     @Bindable var personAction: PersonAction
     
     @State private var selectedDate = Date()
@@ -1193,7 +1194,8 @@ struct ReminderSettingSheet: View {
             for: personAction,
             at: selectedDate,
             title: title,
-            body: body
+            body: body,
+            context: context
         )
         
         isSettingReminder = false

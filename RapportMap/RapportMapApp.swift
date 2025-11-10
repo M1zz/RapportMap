@@ -23,7 +23,8 @@ struct RapportMapApp: App {
             MeetingRecord.self,
             PersonContext.self,  // 추가!
             InteractionRecord.self,  // 혹시 빠졌다면 추가
-            ConversationRecord.self  // 대화 기록 모델 추가
+            ConversationRecord.self,  // 대화 기록 모델 추가
+            NotificationHistory.self  // 알림 히스토리 모델 추가
         ])
     }
 }
@@ -111,7 +112,13 @@ struct AppRootView: View {
             // 3. PersonContext 마이그레이션 (한번만) - 새로 추가!
             DataSeeder.migratePersonStringFieldsToContexts(context: context)
             
-            // 4. 선택된 Person이 있는지 확인하고 찾기
+            // 4. 전달된 알림을 히스토리에 동기화
+            await NotificationHistoryManager.shared.syncDeliveredNotifications(context: context)
+            
+            // 5. 30일 이상 된 오래된 알림 히스토리 정리
+            NotificationHistoryManager.shared.cleanupOldNotifications(context: context)
+            
+            // 6. 선택된 Person이 있는지 확인하고 찾기
             if let person = appStateManager.findSelectedPerson(in: context) {
                 print("✅ 이전 상태 복원: \(person.name)님의 PersonDetailView")
             } else {

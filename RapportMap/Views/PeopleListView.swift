@@ -41,9 +41,11 @@ enum FilterCase: CaseIterable {
 struct PeopleListView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Person.name) private var people: [Person]
+    @Query(sort: \NotificationHistory.deliveredDate, order: .reverse) private var notificationHistory: [NotificationHistory]
     @State private var showingAdd = false
     @State private var searchText = ""
     @State private var showingFilter = false
+    @State private var showingNotificationHistory = false
     @State private var filterOptions = FilterOptions()
     
     // 검색 필터링된 사람들
@@ -150,6 +152,7 @@ struct PeopleListView: View {
                 .toolbar { toolbarContent }
                 .sheet(isPresented: $showingAdd) { addPersonSheet }
                 .sheet(isPresented: $showingFilter) { filterSheet }
+                .sheet(isPresented: $showingNotificationHistory) { notificationHistorySheet }
                 .onAppear { handleViewAppear() }
         }
     }
@@ -199,13 +202,17 @@ struct PeopleListView: View {
             debugMenu
         }
         #endif
-        
+                
         ToolbarItem(placement: .navigationBarTrailing) {
             filterButton
         }
         
         ToolbarItem(placement: .navigationBarTrailing) {
             addButton
+        }
+        
+        ToolbarItem(placement: .navigationBarTrailing) {
+            notificationHistoryButton
         }
     }
     
@@ -221,6 +228,39 @@ struct PeopleListView: View {
                 }
             }
         }
+    }
+    
+    private var notificationHistoryButton: some View {
+        Button {
+            showingNotificationHistory = true
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "bell.fill")
+                    .font(.body)
+                    .imageScale(.large)
+                
+                // 읽지 않은 알림 배지
+                if unreadNotificationCount > 0 {
+                    let displayText = unreadNotificationCount > 99 ? "99+" : "\(unreadNotificationCount)"
+                    
+                    Text(displayText)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, unreadNotificationCount > 9 ? 4 : 3.5)
+                        .padding(.vertical, 2.5)
+                        .background(
+                            Capsule()
+                                .fill(Color.red)
+                        )
+                        .offset(x: 8, y: -6)
+                }
+            }
+            .frame(width: 32, height: 32) // 버튼 영역 명시적 지정
+        }
+    }
+    
+    private var unreadNotificationCount: Int {
+        notificationHistory.filter { !$0.isRead }.count
     }
     
     private var filterButton: some View {
@@ -256,6 +296,10 @@ struct PeopleListView: View {
             peopleCount: people.count,
             filteredCount: filteredPeople.count
         )
+    }
+    
+    private var notificationHistorySheet: some View {
+        NotificationHistoryView()
     }
     
     // MARK: - Actions & Handlers
