@@ -190,7 +190,7 @@ struct PersonDetailView: View {
             }
         }
         .sheet(isPresented: $showingImagePicker) {
-            ImagePicker(imageData: $person.profileImageData) {
+            PhotoPicker(imageData: $person.profileImageData) {
                 // 이미지가 선택되면 저장
                 try? context.save()
             }

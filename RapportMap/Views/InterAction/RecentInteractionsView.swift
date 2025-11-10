@@ -924,351 +924,43 @@ struct CreateInteractionRecordSheet: View {
             // 만남은 모든 타입과 연결 가능
             return person.meetingRecords.sorted { $0.date > $1.date }
         }
-        
+
         return person.meetingRecords
             .filter { $0.meetingType == matchingMeetingType }
             .sorted { $0.date > $1.date }
+    }
+
+    // 지속 시간 표시를 위한 computed property
+    private var formattedDurationPreview: String {
+        guard let duration = tempDuration, duration > 0 else { return "" }
+        let minutes = Int(duration) / 60
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+        if hours > 0 {
+            return "\(hours)시간 \(remainingMinutes)분"
+        } else {
+            return "\(minutes)분"
+        }
     }
     
     var body: some View {
         NavigationStack {
             Form {
-                Section("기본 정보") {
-                    HStack {
-                        Text(interactionType.emoji)
-                            .font(.largeTitle)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(interactionType.title)
-                                .font(.headline)
-                            Text("새로운 \(interactionType.title) 기록을 추가하세요")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-                
-                Section("날짜 및 시간") {
-                    DatePicker("날짜와 시간", selection: $tempDate, displayedComponents: [.date, .hourAndMinute])
-                        .datePickerStyle(.compact)
-                }
-                
-                Section("장소") {
-                    TextField("어디서 만났나요?", text: $tempLocation)
-                }
-                
-                Section("지속 시간") {
-                    Toggle("지속 시간 기록", isOn: $hasDuration)
-                    
-                    if hasDuration {
-                        HStack {
-                            Text("시간:")
-                            Spacer()
-                            HStack {
-                                TextField("시간", value: Binding(
-                                    get: { Int((tempDuration ?? 0) / 3600) },
-                                    set: { newValue in
-                                        let hours = TimeInterval(newValue)
-                                        let minutes = (tempDuration ?? 0).truncatingRemainder(dividingBy: 3600) / 60
-                                        tempDuration = hours * 3600 + minutes * 60
-                                    }
-                                ), format: .number)
-                                .textFieldStyle(.roundedBorder)
-                                .keyboardType(.numberPad)
-                                .frame(width: 60)
-                                
-                                Text("시간")
-                                
-                                TextField("분", value: Binding(
-                                    get: { Int(((tempDuration ?? 0).truncatingRemainder(dividingBy: 3600)) / 60) },
-                                    set: { newValue in
-                                        let hours = (tempDuration ?? 0) / 3600
-                                        let minutes = TimeInterval(newValue)
-                                        tempDuration = hours * 3600 + minutes * 60
-                                    }
-                                ), format: .number)
-                                .textFieldStyle(.roundedBorder)
-                                .keyboardType(.numberPad)
-                                .frame(width: 60)
-                                
-                                Text("분")
-                            }
-                        }
-                    }
-                }
-                
-                Section("메모") {
-                    TextField("이번 \(interactionType.title)에서 어떤 이야기를 나눴나요?", text: $tempNotes, axis: .vertical)
-                        .lineLimit(3...8)
-                        .autocorrectionDisabled(false)
-                }
-                
-                // 사진 섹션 - 여러 장 지원
-                Section {
-                    VStack(spacing: 12) {
-                        // 기존 사진들 표시
-                        if !photosData.isEmpty {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 12) {
-                                    ForEach(photosData.indices, id: \.self) { index in
-                                        if let uiImage = UIImage(data: photosData[index]) {
-                                            VStack(spacing: 8) {
-                                                Image(uiImage: uiImage)
-                                                    .resizable()
-                                                    .scaledToFill()
-                                                    .frame(width: 150, height: 150)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                                    .overlay(
-                                                        RoundedRectangle(cornerRadius: 12)
-                                                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                                                    )
-                                                
-                                                Button(role: .destructive) {
-                                                    withAnimation {
-                                                        photosData.remove(at: index)
-                                                    }
-                                                } label: {
-                                                    Label("삭제", systemImage: "trash")
-                                                        .font(.caption)
-                                                }
-                                                .buttonStyle(.bordered)
-                                                .controlSize(.small)
-                                            }
-                                        }
-                                    }
-                                }
-                                .padding(.vertical, 4)
-                            }
-                        }
-                        
-                        // 사진 추가 버튼
-                        Button {
-                            showingImageOptions = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "photo.badge.plus")
-                                    .font(.title3)
-                                    .foregroundStyle(.blue)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(photosData.isEmpty ? "사진 추가" : "사진 더 추가")
-                                        .font(.headline)
-                                        .foregroundStyle(.primary)
-                                    Text("\(interactionType.title) 순간을 사진으로 남겨보세요")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundStyle(.blue)
-                            }
-                            .padding(.vertical, 8)
-                        }
-                        
-                        // 모든 사진 삭제 버튼 (사진이 있을 때만)
-                        if !photosData.isEmpty {
-                            Button(role: .destructive) {
-                                withAnimation {
-                                    photosData.removeAll()
-                                }
-                            } label: {
-                                HStack {
-                                    Image(systemName: "trash")
-                                    Text("모든 사진 삭제")
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                    }
-                } header: {
-                    HStack {
-                        Text("사진")
-                        Spacer()
-                        if !photosData.isEmpty {
-                            Text("\(photosData.count)장")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                
-                // 녹음 파일 연결 섹션
-                Section("녹음 파일 연결") {
-                    if let relatedRecord = selectedMeetingRecord {
-                        // 이미 연결된 녹음이 있는 경우
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Image(systemName: "waveform")
-                                    .foregroundStyle(.blue)
-                                Text("연결된 녹음")
-                                    .font(.headline)
-                                    .foregroundStyle(.blue)
-                                Spacer()
-                                Button("변경") {
-                                    showingRecordPicker = true
-                                }
-                                .font(.caption)
-                                .buttonStyle(.bordered)
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(relatedRecord.meetingType.emoji)
-                                        .font(.headline)
-                                    Text(relatedRecord.meetingType.rawValue)
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                    Spacer()
-                                }
-                                
-                                Text(relatedRecord.date.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                
-                                HStack {
-                                    Text("길이: \(relatedRecord.formattedDuration)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    
-                                    if relatedRecord.hasAudio {
-                                        Image(systemName: "speaker.wave.2")
-                                            .font(.caption2)
-                                            .foregroundStyle(.green)
-                                        Text("오디오")
-                                            .font(.caption2)
-                                            .foregroundStyle(.green)
-                                    }
-                                }
-                                
-                                if !relatedRecord.summary.isEmpty {
-                                    Text(relatedRecord.summary)
-                                        .font(.caption)
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(2)
-                                        .padding(.top, 2)
-                                }
-                            }
-                            
-                            Button("연결 해제") {
-                                selectedMeetingRecord = nil
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .buttonStyle(.plain)
-                        }
-                        .padding()
-                        .background(Color.blue.opacity(0.05))
-                        .cornerRadius(8)
-                    } else {
-                        // 연결된 녹음이 없는 경우
-                        if availableMeetingRecords.isEmpty {
-                            VStack(spacing: 8) {
-                                Image(systemName: "waveform.slash")
-                                    .font(.title3)
-                                    .foregroundStyle(.secondary)
-                                Text("연결할 수 있는 \(getRecordTypeDescription()) 녹음이 없습니다")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .padding()
-                        } else {
-                            Button {
-                                showingRecordPicker = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "waveform.badge.plus")
-                                        .foregroundStyle(.blue)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("녹음 파일과 연결하기")
-                                            .font(.headline)
-                                            .foregroundStyle(.blue)
-                                        Text("\(availableMeetingRecords.count)개의 \(getRecordTypeDescription()) 녹음이 있습니다")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding()
-                                .background(Color.blue.opacity(0.05))
-                                .cornerRadius(8)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                
-                Section("미리보기") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(interactionType.emoji)
-                                .font(.title2)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(interactionType.title)
-                                    .font(.headline)
-                                    .foregroundStyle(interactionType.color)
-                                
-                                Text(tempDate.formatted(date: .long, time: .shortened))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        
-                        if !tempLocation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            HStack(spacing: 4) {
-                                Image(systemName: "location")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text(tempLocation)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        
-                        if hasDuration, let duration = tempDuration, duration > 0 {
-                            HStack(spacing: 4) {
-                                Image(systemName: "clock")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                let minutes = Int(duration) / 60
-                                let hours = minutes / 60
-                                let remainingMinutes = minutes % 60
-                                if hours > 0 {
-                                    Text("\(hours)시간 \(remainingMinutes)분")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    Text("\(minutes)분")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        
-                        if !tempNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Divider()
-                            Text(tempNotes)
-                                .font(.body)
-                                .foregroundStyle(.primary)
-                                .padding(.top, 2)
-                        }
-                    }
-                    .padding()
-                    .background(interactionType.color.opacity(0.1))
-                    .cornerRadius(12)
-                }
+                basicInfoSection
+                dateTimeSection
+                locationSection
+                durationSection
+                notesSection
+                photosSection
+                recordingSection
+                previewSection
             }
             .navigationTitle("새 \(interactionType.title) 기록")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("취소") { 
-                        dismiss() 
+                    Button("취소") {
+                        dismiss()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -1283,13 +975,13 @@ struct CreateInteractionRecordSheet: View {
                     availableRecords: availableMeetingRecords,
                     onRecordSelected: { meetingRecord in
                         selectedMeetingRecord = meetingRecord
-                        
+
                         // 녹음 파일의 정보를 활용하여 상호작용 정보 자동 설정
                         if let meetingRecord = meetingRecord {
                             tempDate = meetingRecord.date
                             tempDuration = meetingRecord.duration
                             hasDuration = true
-                            
+
                             // 녹음의 요약이나 전사 내용을 메모로 추가 (기존 메모가 비어있을 때만)
                             if tempNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 if !meetingRecord.summary.isEmpty {
@@ -1299,7 +991,7 @@ struct CreateInteractionRecordSheet: View {
                                 }
                             }
                         }
-                        
+
                         showingRecordPicker = false
                     }
                 )
@@ -1327,6 +1019,407 @@ struct CreateInteractionRecordSheet: View {
                     selectedImage = nil // 다음 추가를 위해 초기화
                 }
             }
+        }
+    }
+
+    // MARK: - View Components
+
+    @ViewBuilder
+    private var basicInfoSection: some View {
+        Section("기본 정보") {
+            HStack {
+                Text(interactionType.emoji)
+                    .font(.largeTitle)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(interactionType.title)
+                        .font(.headline)
+                    Text("새로운 \(interactionType.title) 기록을 추가하세요")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder
+    private var dateTimeSection: some View {
+        Section("날짜 및 시간") {
+            DatePicker("날짜와 시간", selection: $tempDate, displayedComponents: [.date, .hourAndMinute])
+                .datePickerStyle(.compact)
+        }
+    }
+
+    @ViewBuilder
+    private var locationSection: some View {
+        Section("장소") {
+            TextField("어디서 만났나요?", text: $tempLocation)
+        }
+    }
+
+    @ViewBuilder
+    private var durationSection: some View {
+        Section("지속 시간") {
+            Toggle("지속 시간 기록", isOn: $hasDuration)
+
+            if hasDuration {
+                durationInputFields
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var durationInputFields: some View {
+        HStack {
+            Text("시간:")
+            Spacer()
+            HStack {
+                TextField("시간", value: hoursBinding, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.numberPad)
+                    .frame(width: 60)
+
+                Text("시간")
+
+                TextField("분", value: minutesBinding, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.numberPad)
+                    .frame(width: 60)
+
+                Text("분")
+            }
+        }
+    }
+
+    private var hoursBinding: Binding<Int> {
+        Binding(
+            get: { Int((tempDuration ?? 0) / 3600) },
+            set: { newValue in
+                let hours = TimeInterval(newValue)
+                let minutes = (tempDuration ?? 0).truncatingRemainder(dividingBy: 3600) / 60
+                tempDuration = hours * 3600 + minutes * 60
+            }
+        )
+    }
+
+    private var minutesBinding: Binding<Int> {
+        Binding(
+            get: { Int(((tempDuration ?? 0).truncatingRemainder(dividingBy: 3600)) / 60) },
+            set: { newValue in
+                let hours = (tempDuration ?? 0) / 3600
+                let minutes = TimeInterval(newValue)
+                tempDuration = hours * 3600 + minutes * 60
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var notesSection: some View {
+        Section("메모") {
+            TextField("이번 \(interactionType.title)에서 어떤 이야기를 나눴나요?", text: $tempNotes, axis: .vertical)
+                .lineLimit(3...8)
+                .autocorrectionDisabled(false)
+        }
+    }
+
+    @ViewBuilder
+    private var photosSection: some View {
+        Section {
+            VStack(spacing: 12) {
+                if !photosData.isEmpty {
+                    photoScrollView
+                }
+                addPhotoButton
+                if !photosData.isEmpty {
+                    deleteAllPhotosButton
+                }
+            }
+        } header: {
+            HStack {
+                Text("사진")
+                Spacer()
+                if !photosData.isEmpty {
+                    Text("\(photosData.count)장")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var photoScrollView: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(photosData.indices, id: \.self) { index in
+                    if let uiImage = UIImage(data: photosData[index]) {
+                        photoThumbnailView(image: uiImage, at: index)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func photoThumbnailView(image: UIImage, at index: Int) -> some View {
+        VStack(spacing: 8) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 150, height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                )
+
+            Button(role: .destructive) {
+                withAnimation {
+                    _ = photosData.remove(at: index)
+                }
+            } label: {
+                Label("삭제", systemImage: "trash")
+                    .font(.caption)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+    }
+
+    @ViewBuilder
+    private var addPhotoButton: some View {
+        Button {
+            showingImageOptions = true
+        } label: {
+            HStack {
+                Image(systemName: "photo.badge.plus")
+                    .font(.title3)
+                    .foregroundStyle(.blue)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(photosData.isEmpty ? "사진 추가" : "사진 더 추가")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text("\(interactionType.title) 순간을 사진으로 남겨보세요")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "plus.circle.fill")
+                    .foregroundStyle(.blue)
+            }
+            .padding(.vertical, 8)
+        }
+    }
+
+    @ViewBuilder
+    private var deleteAllPhotosButton: some View {
+        Button(role: .destructive) {
+            withAnimation {
+                photosData.removeAll()
+            }
+        } label: {
+            HStack {
+                Image(systemName: "trash")
+                Text("모든 사진 삭제")
+            }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+
+    @ViewBuilder
+    private var recordingSection: some View {
+        Section("녹음 파일 연결") {
+            if let relatedRecord = selectedMeetingRecord {
+                connectedRecordingView(relatedRecord)
+            } else {
+                if availableMeetingRecords.isEmpty {
+                    noRecordingsView
+                } else {
+                    connectRecordingButton
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func connectedRecordingView(_ record: MeetingRecord) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "waveform")
+                    .foregroundStyle(.blue)
+                Text("연결된 녹음")
+                    .font(.headline)
+                    .foregroundStyle(.blue)
+                Spacer()
+                Button("변경") {
+                    showingRecordPicker = true
+                }
+                .font(.caption)
+                .buttonStyle(.bordered)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(record.meetingType.emoji)
+                        .font(.headline)
+                    Text(record.meetingType.rawValue)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Spacer()
+                }
+
+                Text(record.date.formatted(date: .abbreviated, time: .shortened))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Text("길이: \(record.formattedDuration)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if record.hasAudio {
+                        Image(systemName: "speaker.wave.2")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                        Text("오디오")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                    }
+                }
+
+                if !record.summary.isEmpty {
+                    Text(record.summary)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .padding(.top, 2)
+                }
+            }
+
+            Button("연결 해제") {
+                selectedMeetingRecord = nil
+            }
+            .font(.caption)
+            .foregroundStyle(.red)
+            .buttonStyle(.plain)
+        }
+        .padding()
+        .background(Color.blue.opacity(0.05))
+        .cornerRadius(8)
+    }
+
+    @ViewBuilder
+    private var noRecordingsView: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "waveform.slash")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+            Text("연결할 수 있는 \(getRecordTypeDescription()) 녹음이 없습니다")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private var connectRecordingButton: some View {
+        Button {
+            showingRecordPicker = true
+        } label: {
+            HStack {
+                Image(systemName: "waveform.badge.plus")
+                    .foregroundStyle(.blue)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("녹음 파일과 연결하기")
+                        .font(.headline)
+                        .foregroundStyle(.blue)
+                    Text("\(availableMeetingRecords.count)개의 \(getRecordTypeDescription()) 녹음이 있습니다")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+            .background(Color.blue.opacity(0.05))
+            .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var previewSection: some View {
+        Section("미리보기") {
+            VStack(alignment: .leading, spacing: 8) {
+                previewHeader
+
+                if !tempLocation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    previewLocationRow
+                }
+
+                if hasDuration, !formattedDurationPreview.isEmpty {
+                    previewDurationRow
+                }
+
+                if !tempNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Divider()
+                    Text(tempNotes)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .padding(.top, 2)
+                }
+            }
+            .padding()
+            .background(interactionType.color.opacity(0.1))
+            .cornerRadius(12)
+        }
+    }
+
+    @ViewBuilder
+    private var previewHeader: some View {
+        HStack {
+            Text(interactionType.emoji)
+                .font(.title2)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(interactionType.title)
+                    .font(.headline)
+                    .foregroundStyle(interactionType.color)
+
+                Text(tempDate.formatted(date: .long, time: .shortened))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var previewLocationRow: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "location")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(tempLocation)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var previewDurationRow: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "clock")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(formattedDurationPreview)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
     

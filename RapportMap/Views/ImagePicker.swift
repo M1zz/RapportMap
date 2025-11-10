@@ -8,11 +8,16 @@
 import SwiftUI
 import PhotosUI
 
-struct ImagePicker: UIViewControllerRepresentable {
+struct PhotoPicker: UIViewControllerRepresentable {
     @Binding var imageData: Data?
     @Environment(\.dismiss) private var dismiss
     var onImageSelected: (() -> Void)?
-    
+
+    init(imageData: Binding<Data?>, onImageSelected: (() -> Void)? = nil) {
+        self._imageData = imageData
+        self.onImageSelected = onImageSelected
+    }
+
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var configuration = PHPickerConfiguration()
         configuration.filter = .images
@@ -32,9 +37,9 @@ struct ImagePicker: UIViewControllerRepresentable {
     }
     
     class Coordinator: NSObject, PHPickerViewControllerDelegate {
-        let parent: ImagePicker
+        let parent: PhotoPicker
         
-        init(_ parent: ImagePicker) {
+        init(_ parent: PhotoPicker) {
             self.parent = parent
         }
         
