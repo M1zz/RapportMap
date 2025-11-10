@@ -90,6 +90,7 @@ struct PersonDetailView: View {
     @State private var contactSyncStatus: ContactSyncStatus = .unknown // 연락처 동기화 상태
     @State private var syncSuccessMessage: String? = nil // 동기화 성공 메시지
     @State private var showingSyncSuccess = false // 동기화 성공 알림 표시
+    @State private var contactSearchFailedMessage: String? = nil // 연락처 검색 실패 메시지
     @StateObject private var contactsManager = ContactsManager.shared
     @Binding var selectedTab: Int
     
@@ -495,17 +496,33 @@ struct PersonDetailView: View {
                 Button {
                     Task {
                         isLoadingContact = true
-                        if let foundContact = await contactsManager.updatePersonContactFromContacts(person) {
+                        contactSearchFailedMessage = nil // 이전 메시지 초기화
+                        
+                        if let foundContact = await contactsManager.updatePersonContactFromContacts(person),
+                           !foundContact.isEmpty,
+                           foundContact != "010-0000-0000" {
+                            // 성공: 유효한 연락처를 찾음
                             await MainActor.run {
                                 person.contact = foundContact
                                 try? context.save()
                                 isLoadingContact = false
+                                contactSearchFailedMessage = nil
                             }
                             // 연락처를 찾았으므로 동기화 상태 재확인
                             await checkContactSyncStatus()
                         } else {
+                            // 실패: nil, 빈 문자열, 또는 010-0000-0000
                             await MainActor.run {
                                 isLoadingContact = false
+                                // 실패 메시지 설정
+                                contactSearchFailedMessage = "'\(person.name)' 이름과 일치하는 연락처를 찾을 수 없습니다"
+                            }
+                            
+                            // 3초 후 메시지 자동 제거
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                withAnimation {
+                                    contactSearchFailedMessage = nil
+                                }
                             }
                         }
                     }
@@ -527,6 +544,24 @@ struct PersonDetailView: View {
                     .padding(.vertical, 4)
                 }
                 .disabled(isLoadingContact)
+                
+                // 검색 실패 메시지
+                if let failMessage = contactSearchFailedMessage {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(.orange)
+                            .font(.caption)
+                        
+                        Text(failMessage)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
             
             // 에러 표시 (연락처 동기화 관련 에러만)

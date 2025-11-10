@@ -16,6 +16,8 @@ struct AddPersonSheet: View {
     @State private var showingContactPicker = false
     @State private var showingAddToContacts = false
     @State private var addToContactsAfterCreation = false
+    @State private var isSearchingContact = false
+    @State private var contactSearchFailedMessage: String? = nil
     private let contactsManager = ContactsManager.shared
     
     var onAdd: (String, String) -> Void
@@ -41,6 +43,50 @@ struct AddPersonSheet: View {
                             Image(systemName: "chevron.right")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                        }
+                    }
+                    
+                    // 이름이 있고 연락처가 없을 때 자동 찾기 버튼 표시
+                    if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && 
+                       contact.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button {
+                            Task {
+                                await autoFillContactFromName()
+                            }
+                        } label: {
+                            HStack {
+                                if isSearchingContact {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "magnifyingglass.circle")
+                                        .foregroundStyle(.orange)
+                                }
+                                
+                                Text(isSearchingContact ? "검색 중..." : "이름으로 자동 찾기")
+                                    .foregroundStyle(.orange)
+                                
+                                Spacer()
+                            }
+                        }
+                        .disabled(isSearchingContact)
+                        
+                        // 검색 실패 메시지
+                        if let failMessage = contactSearchFailedMessage {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundStyle(.orange)
+                                    .font(.caption)
+                                
+                                Text(failMessage)
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                            .background(Color.orange.opacity(0.1))
+                            .cornerRadius(8)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
                     
@@ -117,6 +163,41 @@ struct AddPersonSheet: View {
         
         // 이미 iPhone 연락처에 있으므로 중복 추가 방지
         addToContactsAfterCreation = false
+        
+        // 성공 시 실패 메시지 초기화
+        contactSearchFailedMessage = nil
+    }
+    
+    private func autoFillContactFromName() async {
+        isSearchingContact = true
+        contactSearchFailedMessage = nil
+        
+        // 임시 Person 객체 생성 (검색용)
+        let tempPerson = Person(name: name.trimmingCharacters(in: .whitespacesAndNewlines), contact: "")
+        
+        // 이름으로 연락처 찾기
+        if let foundContact = await contactsManager.updatePersonContactFromContacts(tempPerson) {
+            await MainActor.run {
+                self.contact = foundContact
+                isSearchingContact = false
+                contactSearchFailedMessage = nil
+                
+                // 이미 iPhone 연락처에 있으므로 중복 추가 방지
+                addToContactsAfterCreation = false
+            }
+        } else {
+            await MainActor.run {
+                isSearchingContact = false
+                contactSearchFailedMessage = "'\(name)' 이름과 일치하는 연락처를 찾을 수 없습니다"
+            }
+            
+            // 3초 후 메시지 자동 제거
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                withAnimation {
+                    contactSearchFailedMessage = nil
+                }
+            }
+        }
     }
     
     private func addPerson() {

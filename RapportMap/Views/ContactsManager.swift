@@ -498,7 +498,7 @@ class ContactsManager: ObservableObject {
                         contactInfo = email.value as String
                     }
                     
-                    if !contactInfo.isEmpty {
+                    if !contactInfo.isEmpty && contactInfo != "010-0000-0000" {
                         self.logger.info("✅ \(person.name)의 연락처 정보 찾음: \(contactInfo)")
                         return contactInfo
                     }
@@ -506,7 +506,7 @@ class ContactsManager: ObservableObject {
             }
             
             self.logger.info("❌ \(person.name)의 연락처 정보를 찾을 수 없음")
-            return "010-0000-0000"
+            return ""
         }
     }
 }
