@@ -46,9 +46,9 @@ struct RecentInteractionsView: View {
     
     var body: some View {
         VStack(spacing: 16) {
-            recentInteractionsSection
-            actionButtonsSection
             quickMemoSection
+            actionButtonsSection
+            recentInteractionsSection
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
@@ -129,6 +129,37 @@ struct RecentInteractionsView: View {
                             }
                         }
                     )
+                    .onAppear {
+                        print("✅ CreateInteractionRecordSheet 표시됨 - 타입: \(newInteractionType.title)")
+                    }
+                } else {
+                    // newInteractionType이 nil일 때 안내 화면
+                    NavigationStack {
+                        VStack(spacing: 20) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 60))
+                                .foregroundStyle(.orange)
+
+                            Text("상호작용 타입을 선택해주세요")
+                                .font(.headline)
+
+                            Text("기록하려는 상호작용 타입이 설정되지 않았습니다.\n다시 시도해주세요.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+
+                            Button("닫기") {
+                                activeSheet = nil
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .padding()
+                        .navigationTitle("오류")
+                        .navigationBarTitleDisplayMode(.inline)
+                    }
+                    .onAppear {
+                        print("⚠️ newInteractionType이 nil - 안내 화면 표시됨")
+                    }
                 }
 
             case .recordDetail(let record):
@@ -190,10 +221,11 @@ struct RecentInteractionsView: View {
     @ViewBuilder
     private var actionButtonsSection: some View {
         HStack(spacing: 12) {
-            // 입력하기 메뉴 버튼
+            // 기록하기 메뉴 버튼
             Menu {
                 ForEach(InteractionType.allCases, id: \.self) { type in
                     Button {
+                        print("📝 상호작용 타입 선택: \(type.title)")
                         newInteractionType = type
                         activeSheet = .createInteraction
                     } label: {
@@ -204,7 +236,7 @@ struct RecentInteractionsView: View {
                 HStack {
                     Image(systemName: "plus.circle.fill")
                         .font(.title3)
-                    Text("입력하기")
+                    Text("기록하기")
                         .font(.headline)
                 }
                 .foregroundStyle(.white)
