@@ -294,7 +294,7 @@ struct ConversationHistoryView: View {
             VStack(spacing: 0) {
                 // 필터 선택
                 VStack(spacing: 12) {
-                    Picker("필터", selection: $selectedFilter) {
+                    Picker("", selection: $selectedFilter) {
                         ForEach(ConversationFilter.allCases, id: \.self) { filter in
                             Text(filter.rawValue)
                                 .tag(filter)

@@ -38,6 +38,9 @@ final class Person {
     var mentoringNotes: String?         // 멘토링 관련 메모 (InteractionRecord로 마이그레이션 예정)
     var mealNotes: String?              // 식사 관련 메모 (InteractionRecord로 마이그레이션 예정)
     var contactNotes: String?           // 연락 관련 메모 (InteractionRecord로 마이그레이션 예정)
+
+    // MARK: - 빠른 메모
+    var quickMemo: String = ""          // 대화 후 빠른 메모 (나중에 분석하여 약속, 정보 등으로 분류)
     
     // MARK: - 관계형 데이터 (SwiftData Relationships)
     
@@ -65,6 +68,12 @@ final class Person {
     /// cascade 삭제: 사람이 삭제되면 관련 대화 기록들도 모두 삭제됨
     @Relationship(deleteRule: .cascade, inverse: \ConversationRecord.person)
     var conversationRecords: [ConversationRecord] = []
+
+    /// 아카이브된 빠른 메모들
+    /// cascade 삭제: 사람이 삭제되면 관련 메모들도 모두 삭제됨
+    @Relationship(deleteRule: .cascade, inverse: \QuickMemoArchive.person)
+    var archivedMemos: [QuickMemoArchive] = []
+
     // MARK: - 초기화
     /// Person 객체 생성자
     /// - Parameters:

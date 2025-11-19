@@ -120,6 +120,46 @@ struct PersonDetailView: View {
             }
         }
         .navigationTitle(person.name)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                // 이름이 5자 이상이면 Menu, 짧으면 Segmented
+                if person.name.count >= 5 {
+                    Menu {
+                        Button {
+                            selectedTab = 0
+                        } label: {
+                            Label("활동", systemImage: "clock.arrow.circlepath")
+                        }
+
+                        Button {
+                            selectedTab = 1
+                        } label: {
+                            Label("관계", systemImage: "person.2")
+                        }
+
+                        Button {
+                            selectedTab = 2
+                        } label: {
+                            Label("정보", systemImage: "info.circle")
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(currentTab.title)
+                                .font(.subheadline)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                        }
+                    }
+                } else {
+                    Picker("", selection: $selectedTab) {
+                        Text("활동").tag(0)
+                        Text("관계").tag(1)
+                        Text("정보").tag(2)
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+        }
         .id(refreshTrigger) // refreshTrigger 값이 변경되면 전체 뷰가 새로고침됨
         .onReceive(NotificationCenter.default.publisher(for: .importantRecordingAdded)) { notification in
             // 현재 Person과 알림의 Person이 일치하는지 확인

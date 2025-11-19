@@ -8,16 +8,32 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - Sheet Type
+enum RecentInteractionsSheet: Identifiable {
+    case interactionHistory
+    case memoArchive
+    case editInteraction
+    case createInteraction
+    case recordDetail(InteractionRecord)
+
+    var id: String {
+        switch self {
+        case .interactionHistory: return "interactionHistory"
+        case .memoArchive: return "memoArchive"
+        case .editInteraction: return "editInteraction"
+        case .createInteraction: return "createInteraction"
+        case .recordDetail(let record): return "recordDetail-\(record.id)"
+        }
+    }
+}
+
 // MARK: - RecentInteractionsView
 struct RecentInteractionsView: View {
     @Environment(\.modelContext) private var context
     @Bindable var person: Person
-    @State private var showingEditSheet = false
-    @State private var showingCreateSheet = false
-    @State private var showingHistory = false
+    @State private var activeSheet: RecentInteractionsSheet?
     @State private var interactionToEdit: InteractionType?
     @State private var recordToEdit: InteractionRecord? // 실제 편집할 기록을 저장
-    @State private var recordToShow: InteractionRecord?
     @State private var newInteractionType: InteractionType? // 새로 생성할 상호작용 타입
     
     // 기본 상호작용 타입들 (호환성을 위해)
@@ -31,90 +47,103 @@ struct RecentInteractionsView: View {
     var body: some View {
         VStack(spacing: 16) {
             recentInteractionsSection
-            quickActionSection
+            actionButtonsSection
+            quickMemoSection
         }
-        .sheet(isPresented: $showingEditSheet) {
-            if let recordToEdit = recordToEdit, let person = recordToEdit.person {
-                EditInteractionRecordSheet(record: recordToEdit, person: person)
-            } else {
-                // 만약 recordToEdit이 없다면 에러 화면 표시
-                NavigationStack {
-                    VStack(spacing: 20) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 60))
-                            .foregroundStyle(.orange)
-                        
-                        Text("편집할 기록을 찾을 수 없어요")
-                            .font(.headline)
-                        
-                        Text("기록이 삭제되었거나 문제가 발생했습니다.\n다시 시도해주세요.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                        
-                        Button("닫기") {
-                            showingEditSheet = false
-                        }
-                        .buttonStyle(.borderedProminent)
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .interactionHistory:
+                InteractionHistoryView(person: person)
+                    .onAppear {
+                        print("✅ InteractionHistoryView 표시됨")
                     }
-                    .padding()
-                    .navigationTitle("오류")
-                    .navigationBarTitleDisplayMode(.inline)
+
+            case .memoArchive:
+                QuickMemoArchiveView(person: person)
+                    .onAppear {
+                        print("✅ QuickMemoArchiveView 표시됨")
+                    }
+
+            case .editInteraction:
+                if let recordToEdit = recordToEdit, let person = recordToEdit.person {
+                    EditInteractionRecordSheet(record: recordToEdit, person: person)
+                } else {
+                    // 만약 recordToEdit이 없다면 에러 화면 표시
+                    NavigationStack {
+                        VStack(spacing: 20) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 60))
+                                .foregroundStyle(.orange)
+
+                            Text("편집할 기록을 찾을 수 없어요")
+                                .font(.headline)
+
+                            Text("기록이 삭제되었거나 문제가 발생했습니다.\n다시 시도해주세요.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+
+                            Button("닫기") {
+                                activeSheet = nil
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .padding()
+                        .navigationTitle("오류")
+                        .navigationBarTitleDisplayMode(.inline)
+                    }
                 }
-            }
-        }
-        .sheet(isPresented: $showingCreateSheet) {
-            if let newInteractionType = newInteractionType {
-                CreateInteractionRecordSheet(
-                    person: person,
-                    interactionType: newInteractionType,
-                    onSave: { date, notes, location, duration, relatedMeetingRecord, photosData in
-                        // 저장 버튼을 눌렀을 때만 실제 데이터 생성
-                        let newRecord = person.addInteractionRecord(
-                            type: newInteractionType,
-                            date: date,
-                            notes: notes,
-                            duration: duration,
-                            location: location,
-                            relatedMeetingRecord: relatedMeetingRecord
-                        )
-                        
-                        // 사진들 추가
-                        photosData.forEach { photoData in
-                            newRecord.addPhoto(photoData)
+
+            case .createInteraction:
+                if let newInteractionType = newInteractionType {
+                    CreateInteractionRecordSheet(
+                        person: person,
+                        interactionType: newInteractionType,
+                        onSave: { date, notes, location, duration, relatedMeetingRecord, photosData in
+                            // 저장 버튼을 눌렀을 때만 실제 데이터 생성
+                            let newRecord = person.addInteractionRecord(
+                                type: newInteractionType,
+                                date: date,
+                                notes: notes,
+                                duration: duration,
+                                location: location,
+                                relatedMeetingRecord: relatedMeetingRecord
+                            )
+
+                            // 사진들 추가
+                            photosData.forEach { photoData in
+                                newRecord.addPhoto(photoData)
+                            }
+
+                            person.updateRelationshipState()
+
+                            do {
+                                try context.save()
+                                print("✅ 새 상호작용 기록 생성: \(newRecord.id)")
+
+                                // 햅틱 피드백
+                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                                impactFeedback.impactOccurred()
+                            } catch {
+                                print("❌ 상호작용 기록 생성 실패: \(error)")
+                            }
                         }
-                        
-                        person.updateRelationshipState()
-                        
-                        do {
-                            try context.save()
-                            print("✅ 새 상호작용 기록 생성: \(newRecord.id)")
-                            
-                            // 햅틱 피드백
-                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                            impactFeedback.impactOccurred()
-                        } catch {
-                            print("❌ 상호작용 기록 생성 실패: \(error)")
-                        }
+                    )
+                }
+
+            case .recordDetail(let record):
+                InteractionRecordDetailView(record: record, person: person) {
+                    // 편집 버튼을 눌렀을 때
+                    // 1. 먼저 편집할 기록 설정
+                    recordToEdit = record
+
+                    // 2. 상세 sheet 닫기
+                    activeSheet = nil
+
+                    // 3. 애니메이션 완료 후 편집 sheet 열기
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        activeSheet = .editInteraction
                     }
-                )
-            }
-        }
-        .sheet(isPresented: $showingHistory) {
-            InteractionHistoryView(person: person)
-        }
-        .sheet(item: $recordToShow) { record in
-            InteractionRecordDetailView(record: record, person: person) {
-                // 편집 버튼을 눌렀을 때
-                // 1. 먼저 편집할 기록 설정
-                recordToEdit = record
-                
-                // 2. 상세 sheet 닫기
-                recordToShow = nil
-                
-                // 3. 애니메이션 완료 후 편집 sheet 열기
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    showingEditSheet = true
                 }
             }
         }
@@ -159,57 +188,138 @@ struct RecentInteractionsView: View {
     }
     
     @ViewBuilder
-    private var quickActionSection: some View {
-        VStack(spacing: 8) {
-            Text("빠른 기록")
-                .font(.body)
-                .foregroundStyle(.secondary)
-            
-            HStack(spacing: 12) {
-                ForEach(basicTypes, id: \.self) { type in
-                    quickActionButton(for: type)
+    private var actionButtonsSection: some View {
+        HStack(spacing: 12) {
+            // 입력하기 메뉴 버튼
+            Menu {
+                ForEach(InteractionType.allCases, id: \.self) { type in
+                    Button {
+                        newInteractionType = type
+                        activeSheet = .createInteraction
+                    } label: {
+                        Label(type.title, systemImage: type.systemImage)
+                    }
                 }
-                
-                viewAllRecordsButton
+            } label: {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                    Text("입력하기")
+                        .font(.headline)
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.blue)
+                .cornerRadius(12)
             }
+
+            // 전체 기록 보기 버튼
+            Button {
+                print("🔵 전체 기록 버튼 클릭 - InteractionHistory 열기")
+                guard activeSheet == nil else {
+                    print("⚠️ 이미 sheet가 열려있음, 무시")
+                    return
+                }
+                activeSheet = .interactionHistory
+            } label: {
+                HStack {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.title3)
+                    Text("전체 기록")
+                        .font(.headline)
+                }
+                .foregroundStyle(.blue)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(12)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private var quickMemoSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("빠른 메모")
+                        .font(.headline)
+                    Text("대화 내용을 자유롭게 메모하세요. 저장하면 아카이브에 보관됩니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+
+                // 아카이브 보기 버튼
+                if !person.archivedMemos.isEmpty {
+                    Button {
+                        print("📦 아카이브 버튼 클릭 - MemoArchive 열기")
+                        guard activeSheet == nil else {
+                            print("⚠️ 이미 sheet가 열려있음, 무시")
+                            return
+                        }
+                        activeSheet = .memoArchive
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "archivebox")
+                                .font(.caption)
+                            Text("\(person.archivedMemos.count)")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundStyle(.blue)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            TextEditor(text: $person.quickMemo)
+                .frame(minHeight: 120)
+                .padding(8)
+                .background(Color(.systemBackground))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                )
+                .overlay(alignment: .topLeading) {
+                    if person.quickMemo.isEmpty {
+                        Text("예: 오늘 만나서 프로젝트 이야기를 나눴어요. 다음주에 결과물 보여주기로 약속했고, 최근에 ○○○에 관심이 생겼다고 하네요...")
+                            .font(.body)
+                            .foregroundStyle(.secondary.opacity(0.5))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 16)
+                            .allowsHitTesting(false)
+                    }
+                }
+
+            // 저장 버튼
+            Button {
+                saveQuickMemo()
+            } label: {
+                HStack {
+                    Image(systemName: "archivebox.fill")
+                        .font(.body)
+                    Text("저장하고 초기화")
+                        .font(.headline)
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(person.quickMemo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray : Color.green)
+                .cornerRadius(10)
+            }
+            .disabled(person.quickMemo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(12)
-    }
-    
-    @ViewBuilder
-    private func quickActionButton(for type: InteractionType) -> some View {
-        Button {
-            handleQuickAction(for: type)
-        } label: {
-            VStack(spacing: 4) {
-                Image(systemName: type.systemImage)
-                    .font(.body)
-                Text("지금")
-                    .font(.body)
-            }
-            .foregroundStyle(.blue)
-            .padding(8)
-            .background(Color.blue.opacity(0.1))
-            .cornerRadius(8)
-        }
-        .buttonStyle(.plain)
-    }
-    
-    @ViewBuilder
-    private var viewAllRecordsButton: some View {
-        Button {
-            showingHistory = true
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.body)
-                Text("전체 기록 보기")
-                    .font(.body)
-            }
-            .foregroundStyle(.blue)
-        }
     }
     
     @ViewBuilder
@@ -221,15 +331,46 @@ struct RecentInteractionsView: View {
 
     
     // MARK: - Actions
-    
+
     private func handleCardTap(for record: InteractionRecord) {
-        recordToShow = record
+        activeSheet = .recordDetail(record)
     }
-    
+
     private func handleQuickAction(for type: InteractionType) {
         // 임시로 타입만 저장하고 생성 시트 열기
         newInteractionType = type
-        showingCreateSheet = true
+        activeSheet = .createInteraction
+    }
+
+    private func saveQuickMemo() {
+        let trimmedMemo = person.quickMemo.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedMemo.isEmpty else { return }
+
+        // 새 아카이브 메모 생성
+        let archive = QuickMemoArchive(content: trimmedMemo, createdDate: Date())
+        archive.person = person
+
+        // context에 삽입
+        context.insert(archive)
+
+        // person의 archivedMemos에 추가 (relationship이 자동으로 처리하지만 명시적으로)
+        person.archivedMemos.append(archive)
+
+        // 저장
+        do {
+            try context.save()
+            print("✅ 빠른 메모 저장 완료: \(trimmedMemo.prefix(50))...")
+
+            // quickMemo 초기화
+            person.quickMemo = ""
+
+            // 햅틱 피드백
+            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+            impactFeedback.impactOccurred()
+        } catch {
+            print("❌ 빠른 메모 저장 실패: \(error)")
+        }
     }
 }
 
@@ -749,7 +890,7 @@ struct InteractionHistoryView: View {
             VStack(spacing: 0) {
                 // 세그먼트 컨트롤
                 VStack(spacing: 12) {
-                    Picker("필터", selection: $selectedFilter) {
+                    Picker("", selection: $selectedFilter) {
                         ForEach(FilterOption.allCases, id: \.self) { option in
                             Text(option.rawValue)
                                 .tag(option)
@@ -1444,5 +1585,119 @@ struct CreateInteractionRecordSheet: View {
         case .meeting:
             return "만남"
         }
+    }
+}
+
+// MARK: - QuickMemoArchiveView
+struct QuickMemoArchiveView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    let person: Person
+
+    // 최신순으로 정렬된 아카이브 메모들
+    private var sortedMemos: [QuickMemoArchive] {
+        person.archivedMemos.sorted { $0.createdDate > $1.createdDate }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if sortedMemos.isEmpty {
+                    emptyStateView
+                } else {
+                    ForEach(sortedMemos, id: \.id) { memo in
+                        MemoArchiveRow(memo: memo)
+                    }
+                    .onDelete(perform: deleteMemos)
+                }
+            }
+            .navigationTitle("메모 아카이브")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("닫기") {
+                        dismiss()
+                    }
+                }
+
+                if !sortedMemos.isEmpty {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        EditButton()
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var emptyStateView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "archivebox")
+                .font(.system(size: 60))
+                .foregroundStyle(.secondary)
+
+            Text("저장된 메모가 없어요")
+                .font(.headline)
+                .foregroundStyle(.primary)
+
+            Text("빠른 메모를 작성하고 저장하면 여기에 보관됩니다.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .listRowBackground(Color.clear)
+    }
+
+    private func deleteMemos(at offsets: IndexSet) {
+        for index in offsets {
+            let memo = sortedMemos[index]
+            context.delete(memo)
+        }
+
+        do {
+            try context.save()
+            print("✅ 메모 삭제 완료")
+        } catch {
+            print("❌ 메모 삭제 실패: \(error)")
+        }
+    }
+}
+
+// MARK: - MemoArchiveRow
+struct MemoArchiveRow: View {
+    let memo: QuickMemoArchive
+
+    private var relativeDate: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        formatter.locale = Locale(identifier: "ko_KR")
+        return formatter.localizedString(for: memo.createdDate, relativeTo: Date())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // 날짜와 상대 시간
+            HStack {
+                Text(memo.createdDate.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text("•")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(relativeDate)
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+            }
+
+            // 메모 내용
+            Text(memo.content)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .lineLimit(nil)
+        }
+        .padding(.vertical, 4)
     }
 }

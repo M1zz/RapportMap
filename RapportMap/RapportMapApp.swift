@@ -16,15 +16,16 @@ struct RapportMapApp: App {
             AppRootView()
         }
         .modelContainer(for: [
-            Person.self, 
-            RapportEvent.self, 
-            RapportAction.self, 
-            PersonAction.self, 
+            Person.self,
+            RapportEvent.self,
+            RapportAction.self,
+            PersonAction.self,
             MeetingRecord.self,
             PersonContext.self,  // 추가!
             InteractionRecord.self,  // 혹시 빠졌다면 추가
             ConversationRecord.self,  // 대화 기록 모델 추가
-            NotificationHistory.self  // 알림 히스토리 모델 추가
+            NotificationHistory.self,  // 알림 히스토리 모델 추가
+            QuickMemoArchive.self  // 빠른 메모 아카이브 모델 추가
         ])
     }
 }
@@ -77,16 +78,6 @@ struct AppRootView: View {
                                 Button("목록으로") {
                                     appStateManager.clearSelection()
                                 }
-                            }
-                            
-                            ToolbarItem(placement: .navigationBarTrailing) {
-                                Picker("보기 모드", selection: $selectedTab) {
-                                    Text("활동").tag(0)
-                                    Text("관계").tag(1)
-                                    Text("정보").tag(2)
-                                }
-                                .pickerStyle(.segmented)
-                                .frame(width: 180)
                             }
                         }
                 }
