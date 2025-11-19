@@ -1667,6 +1667,7 @@ struct QuickMemoArchiveView: View {
 // MARK: - MemoArchiveRow
 struct MemoArchiveRow: View {
     let memo: QuickMemoArchive
+    @State private var showingCopiedAlert = false
 
     private var relativeDate: String {
         let formatter = RelativeDateTimeFormatter()
@@ -1690,6 +1691,28 @@ struct MemoArchiveRow: View {
                 Text(relativeDate)
                     .font(.caption)
                     .foregroundStyle(.blue)
+
+                Spacer()
+
+                // 복사 버튼
+                Button {
+                    copyToClipboard()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: showingCopiedAlert ? "checkmark" : "doc.on.doc")
+                            .font(.caption)
+                        if showingCopiedAlert {
+                            Text("복사됨")
+                                .font(.caption2)
+                        }
+                    }
+                    .foregroundStyle(showingCopiedAlert ? .green : .blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(showingCopiedAlert ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
             }
 
             // 메모 내용
@@ -1699,5 +1722,27 @@ struct MemoArchiveRow: View {
                 .lineLimit(nil)
         }
         .padding(.vertical, 4)
+    }
+
+    private func copyToClipboard() {
+        UIPasteboard.general.string = memo.content
+
+        // 복사 완료 표시
+        withAnimation {
+            showingCopiedAlert = true
+        }
+
+        // 햅틱 피드백
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+
+        // 2초 후 원래대로
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation {
+                showingCopiedAlert = false
+            }
+        }
+
+        print("📋 메모 복사됨: \(memo.content.prefix(50))...")
     }
 }
