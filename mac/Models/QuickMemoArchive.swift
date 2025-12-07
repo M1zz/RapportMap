@@ -16,17 +16,12 @@ final class QuickMemoArchive {
     var content: String
     var createdDate: Date
 
-    /// 첨부된 이미지 데이터 (여러 장 가능)
-    @Attribute(.externalStorage)
-    var imageDataArray: [Data]?
-
     /// 이 메모와 연관된 사람
     var person: Person?
 
-    init(content: String, createdDate: Date = Date(), imageDataArray: [Data]? = nil) {
+    init(content: String, createdDate: Date = Date()) {
         self.id = UUID()
         self.content = content
         self.createdDate = createdDate
-        self.imageDataArray = imageDataArray
     }
 }

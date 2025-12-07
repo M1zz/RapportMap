@@ -46,6 +46,7 @@ struct PeopleListView: View {
     @State private var searchText = ""
     @State private var showingFilter = false
     @State private var showingNotificationHistory = false
+    @State private var showingSettings = false
     @State private var filterOptions = FilterOptions()
     
     // 검색 필터링된 사람들
@@ -153,6 +154,7 @@ struct PeopleListView: View {
                 .sheet(isPresented: $showingAdd) { addPersonSheet }
                 .sheet(isPresented: $showingFilter) { filterSheet }
                 .sheet(isPresented: $showingNotificationHistory) { notificationHistorySheet }
+                .sheet(isPresented: $showingSettings) { settingsSheet }
                 .onAppear { handleViewAppear() }
         }
     }
@@ -197,39 +199,31 @@ struct PeopleListView: View {
     
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        #if DEBUG
         ToolbarItem(placement: .navigationBarLeading) {
-            debugMenu
+            settingsButton
         }
-        #endif
-                
+
         ToolbarItem(placement: .navigationBarTrailing) {
             filterButton
         }
-        
+
         ToolbarItem(placement: .navigationBarTrailing) {
             addButton
         }
-        
+
         ToolbarItem(placement: .navigationBarTrailing) {
             notificationHistoryButton
         }
     }
     
-    private var debugMenu: some View {
-        Menu("개발") {
-            Button("샘플 데이터", action: addSampleData)
-            Button("액션 리셋") {
-                DataSeeder.resetDefaultActions(context: context)
-            }
-            Button("연락처에서 가져오기") {
-                Task {
-                    await importFromContacts()
-                }
-            }
+    private var settingsButton: some View {
+        Button {
+            showingSettings = true
+        } label: {
+            Image(systemName: "gearshape.fill")
         }
     }
-    
+
     private var notificationHistoryButton: some View {
         Button {
             showingNotificationHistory = true
@@ -301,7 +295,11 @@ struct PeopleListView: View {
     private var notificationHistorySheet: some View {
         NotificationHistoryView()
     }
-    
+
+    private var settingsSheet: some View {
+        SettingsView()
+    }
+
     // MARK: - Actions & Handlers
     
     private func handleAddPerson(name: String, contact: String) {

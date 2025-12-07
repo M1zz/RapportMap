@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import Contacts
+import EventKit
 
 // 상세 뷰 탭 정의
 enum PersonDetailTab: Int, CaseIterable {
@@ -94,8 +95,11 @@ struct PersonDetailView: View {
     @State private var showingImagePicker = false // 이미지 피커 표시
     @State private var showingImageSourceOptions = false // 이미지 소스 선택 액션시트
     @StateObject private var contactsManager = ContactsManager.shared
+    @StateObject private var calendarManager = CalendarManager.shared
+    @State private var showingAddEvent = false // 일정 추가 시트
+    @State private var upcomingEvents: [EKEvent] = [] // 다가오는 일정들
     @Binding var selectedTab: Int
-    
+
     @Bindable var person: Person
 
     init(person: Person, selectedTab: Binding<Int> = .constant(0)) {
@@ -250,6 +254,11 @@ struct PersonDetailView: View {
             }
             Button("취소", role: .cancel) { }
         }
+        .sheet(isPresented: $showingAddEvent) {
+            AddEventSheet(person: person) { _ in
+                loadUpcomingEvents()
+            }
+        }
     }
     
     // MARK: - Tab Content Views
@@ -257,10 +266,13 @@ struct PersonDetailView: View {
     private var activitiesTabContent: some View {
         // 상호작용 섹션
         recentInteractionsSection
-        
+
+        // 캘린더 일정 섹션
+        calendarEventsSection
+
         // 녹음 섹션들
         recordingSection
-        
+
         // 놓치면 안되는 것들
         criticalActionsSection
     }
@@ -295,7 +307,53 @@ struct PersonDetailView: View {
             RecentInteractionsView(person: person)
         }
     }
-    
+
+    @ViewBuilder
+    private var calendarEventsSection: some View {
+        Section {
+            // 일정 추가 버튼
+            Button {
+                showingAddEvent = true
+            } label: {
+                HStack {
+                    Image(systemName: "calendar.badge.plus")
+                        .font(.title2)
+                        .foregroundStyle(.blue)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("일정 추가")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text("캘린더에 미팅 일정 추가")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+
+                    Image(systemName: "arrow.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // 다가오는 일정
+            if !upcomingEvents.isEmpty {
+                ForEach(upcomingEvents, id: \.eventIdentifier) { event in
+                    UpcomingEventRow(event: event)
+                }
+            }
+        } header: {
+            Text("일정")
+        }
+        .onAppear {
+            calendarManager.checkAuthorizationStatus()
+            loadUpcomingEvents()
+        }
+    }
+
+    private func loadUpcomingEvents() {
+        upcomingEvents = calendarManager.fetchUpcomingEvents(for: person, days: 30)
+    }
+
     @ViewBuilder
     private var recordingSection: some View {
         Section("녹음") {
@@ -1364,5 +1422,68 @@ struct ImportantConversationRow: View {
         formatter.unitsStyle = .abbreviated
         formatter.locale = Locale(identifier: "ko_KR")
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+// MARK: - Upcoming Event Row
+
+struct UpcomingEventRow: View {
+    let event: EKEvent
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                // 날짜 및 시간
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(event.startDate, style: .date)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.blue)
+                    Text(event.startDate, style: .time)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                // 소요 시간
+                if let endDate = event.endDate {
+                    let duration = Int(endDate.timeIntervalSince(event.startDate) / 60)
+                    Text("\(duration)분")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(Color.blue.opacity(0.1))
+                        )
+                }
+            }
+
+            // 제목
+            if let title = event.title {
+                Text(title)
+                    .font(.body)
+                    .fontWeight(.medium)
+            }
+
+            // 메모
+            if let notes = event.notes, !notes.isEmpty {
+                Text(notes)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.blue.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Color.blue.opacity(0.3), lineWidth: 1)
+                )
+        )
     }
 }

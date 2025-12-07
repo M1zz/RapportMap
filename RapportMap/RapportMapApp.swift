@@ -11,22 +11,49 @@ import AppIntents
 
 @main
 struct RapportMapApp: App {
-    var body: some Scene {
-        WindowGroup {
-            AppRootView()
-        }
-        .modelContainer(for: [
+    // 하위 호환성을 위해 기존 데이터베이스 경로 유지
+    private static let sharedModelContainer: ModelContainer = {
+        let schema = Schema([
             Person.self,
             RapportEvent.self,
             RapportAction.self,
             PersonAction.self,
             MeetingRecord.self,
-            PersonContext.self,  // 추가!
-            InteractionRecord.self,  // 혹시 빠졌다면 추가
-            ConversationRecord.self,  // 대화 기록 모델 추가
-            NotificationHistory.self,  // 알림 히스토리 모델 추가
-            QuickMemoArchive.self  // 빠른 메모 아카이브 모델 추가
+            PersonContext.self,
+            InteractionRecord.self,
+            ConversationRecord.self,
+            NotificationHistory.self,
+            QuickMemoArchive.self
         ])
+
+        // CloudKit 통합 비활성화, 기본 경로 사용
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: false,
+            cloudKitDatabase: .none  // CloudKit 통합 비활성화
+        )
+
+        do {
+            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            print("✅ [App] ModelContainer 생성 성공 (CloudKit 비활성화)")
+
+            // 데이터베이스 경로 출력
+            if let url = container.configurations.first?.url {
+                print("📁 [App] 데이터베이스 경로: \(url.path)")
+            }
+
+            return container
+        } catch {
+            print("❌ [App] ModelContainer 생성 실패: \(error)")
+            fatalError("Could not create ModelContainer: \(error)")
+        }
+    }()
+
+    var body: some Scene {
+        WindowGroup {
+            AppRootView()
+        }
+        .modelContainer(RapportMapApp.sharedModelContainer)
     }
 }
 
@@ -83,8 +110,12 @@ struct AppRootView: View {
                 }
                 
             case .showingPeopleList:
-                // 기본 PeopleListView
-                PeopleListView()
+                // iPad와 iPhone에 따라 다른 UI
+                if UIDevice.current.userInterfaceIdiom == .pad {
+                    iPadMainView()
+                } else {
+                    MainTabView()
+                }
             }
         }
         .onAppear {
@@ -94,28 +125,44 @@ struct AppRootView: View {
     
     private func loadAppState() {
         Task { @MainActor in
+            // 데이터 로드 진단
+            print("\n========================================")
+            print("🔍 [App] 앱 시작 - 데이터 로드 시작")
+
+            do {
+                let descriptor = FetchDescriptor<Person>()
+                let people = try context.fetch(descriptor)
+                print("👥 [App] 로드된 Person 수: \(people.count)")
+                if !people.isEmpty {
+                    print("   첫 번째: \(people[0].name)")
+                }
+            } catch {
+                print("❌ [App] Person 로드 실패: \(error)")
+            }
+            print("========================================\n")
+
             // 1. ActionType 마이그레이션 수행 (한번만)
             DataSeeder.migrateKoreanActionTypes(context: context)
-            
+
             // 2. 기본 액션이 없으면 생성
             DataSeeder.seedDefaultActionsIfNeeded(context: context)
-            
+
             // 3. PersonContext 마이그레이션 (한번만) - 새로 추가!
             DataSeeder.migratePersonStringFieldsToContexts(context: context)
-            
+
             // 4. 전달된 알림을 히스토리에 동기화
             await NotificationHistoryManager.shared.syncDeliveredNotifications(context: context)
-            
+
             // 5. 30일 이상 된 오래된 알림 히스토리 정리
             NotificationHistoryManager.shared.cleanupOldNotifications(context: context)
-            
+
             // 6. 선택된 Person이 있는지 확인하고 찾기
             if let person = appStateManager.findSelectedPerson(in: context) {
                 print("✅ 이전 상태 복원: \(person.name)님의 PersonDetailView")
             } else {
                 print("📱 새로운 시작: PeopleListView")
             }
-            
+
             isLoading = false
         }
     }
