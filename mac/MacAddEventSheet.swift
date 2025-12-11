@@ -14,6 +14,7 @@ struct MacAddEventSheet: View {
     @StateObject private var calendarManager = CalendarManager.shared
 
     let person: Person
+    let selectedDate: Date?
     let onAdd: (MeetingRecord) -> Void
 
     @State private var title = ""
@@ -105,6 +106,10 @@ struct MacAddEventSheet: View {
         }
         .onAppear {
             calendarManager.checkAuthorizationStatus()
+            // 선택된 날짜가 있으면 해당 날짜로 초기화
+            if let selectedDate = selectedDate {
+                date = selectedDate
+            }
         }
     }
 
@@ -153,6 +158,7 @@ struct MacAddEventSheet: View {
 #Preview {
     MacAddEventSheet(
         person: Person(name: "홍길동"),
+        selectedDate: Date(),
         onAdd: { _ in }
     )
     .modelContainer(for: [Person.self])

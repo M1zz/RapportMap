@@ -15,8 +15,9 @@ struct MacPeopleListView: View {
 
     @State private var showingAddPerson = false
     @State private var showingFilter = false
+    @State private var showingAllCalendar = false
     @State private var searchText = ""
-    @State private var filterOptions = FilterOptions()
+    @State private var filterOptions = FilterOptions.load()
 
     private var filteredPeople: [Person] {
         applyFilters(to: people)
@@ -33,6 +34,14 @@ struct MacPeopleListView: View {
         .navigationTitle("관계 지도")
         .searchable(text: $searchText, prompt: "이름이나 연락처로 검색")
         .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    showingAllCalendar = true
+                } label: {
+                    Label("전체 일정", systemImage: "calendar")
+                }
+            }
+
             ToolbarItem(placement: .automatic) {
                 Button {
                     showingFilter = true
@@ -62,6 +71,13 @@ struct MacPeopleListView: View {
                 peopleCount: people.count,
                 filteredCount: filteredPeople.count
             )
+        }
+        .sheet(isPresented: $showingAllCalendar) {
+            MacAllCalendarView()
+        }
+        .onChange(of: filterOptions) { oldValue, newValue in
+            // 필터가 변경될 때마다 자동 저장
+            newValue.save()
         }
     }
 
@@ -120,6 +136,38 @@ struct MacPeopleListView: View {
             }
         }
 
+        // 7. 정렬 적용
+        switch filterOptions.sortOption {
+        case .name:
+            result = result.sorted { $0.name < $1.name }
+        case .lastContact:
+            result = result.sorted { person1, person2 in
+                let date1 = person1.mostRecentInteractionDate ?? person1.relationshipStartDate
+                let date2 = person2.mostRecentInteractionDate ?? person2.relationshipStartDate
+                return date1 > date2 // 최근이 먼저
+            }
+        case .relationshipState:
+            result = result.sorted { person1, person2 in
+                // close > warming > distant 순서
+                let stateOrder: [RelationshipState: Int] = [.close: 0, .warming: 1, .distant: 2]
+                let order1 = stateOrder[person1.state] ?? 3
+                let order2 = stateOrder[person2.state] ?? 3
+                if order1 != order2 {
+                    return order1 < order2
+                }
+                return person1.name < person2.name // 같은 상태면 이름순
+            }
+        case .incompleteActions:
+            result = result.sorted { person1, person2 in
+                let count1 = person1.actions.filter { !$0.isCompleted }.count
+                let count2 = person2.actions.filter { !$0.isCompleted }.count
+                if count1 != count2 {
+                    return count1 > count2 // 미완료 액션이 많은 순
+                }
+                return person1.name < person2.name // 같으면 이름순
+            }
+        }
+
         return result
     }
 
@@ -154,6 +202,13 @@ struct MacPeopleListView: View {
 struct MacPersonRow: View {
     let person: Person
 
+    // 날짜를 상대적인 시간으로 포맷팅
+    private func formatRelativeDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: .now)
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             // 프로필 이미지
@@ -176,9 +231,30 @@ struct MacPersonRow: View {
                 Text(person.name)
                     .font(.headline)
 
-                Text(person.contact)
-                    .font(.caption)
+                if !person.contact.isEmpty {
+                    Text(person.contact)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                // 마지막 접촉일
+                if let lastInteractionDate = person.mostRecentInteractionDate {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock")
+                            .font(.caption2)
+                        Text(formatRelativeDate(lastInteractionDate))
+                            .font(.caption2)
+                    }
                     .foregroundStyle(.secondary)
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock")
+                            .font(.caption2)
+                        Text("접촉 기록 없음")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.secondary)
+                }
 
                 // 관계 상태 배지
                 HStack(spacing: 4) {

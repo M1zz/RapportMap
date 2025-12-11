@@ -41,6 +41,27 @@ struct MacPeopleFilterView: View {
                             .foregroundStyle(.secondary)
                     }
 
+                    // 정렬 옵션
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("정렬")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+
+                            Picker("정렬 기준", selection: $filterOptions.sortOption) {
+                                ForEach(SortOption.allCases, id: \.self) { option in
+                                    HStack {
+                                        Image(systemName: option.systemImage)
+                                        Text(option.rawValue)
+                                    }
+                                    .tag(option)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
+                        .padding()
+                    }
+
                     // 관계 상태 필터
                     GroupBox {
                         VStack(alignment: .leading, spacing: 12) {

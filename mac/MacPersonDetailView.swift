@@ -27,24 +27,24 @@ struct MacPersonDetailView: View {
 
             // 탭 뷰
             TabView(selection: $selectedTab) {
-                // 정보 탭
-                MacPersonInfoTab(person: person)
+                // 기록 탭
+                MacPersonRecordsTab(person: person)
                     .tabItem {
-                        Label("정보", systemImage: "info.circle")
+                        Label("기록", systemImage: "pencil")
                     }
                     .tag(0)
+
+                // 캘린더 탭
+                MacPersonCalendarTab(person: person)
+                    .tabItem {
+                        Label("캘린더", systemImage: "calendar")
+                    }
+                    .tag(1)
 
                 // 활동 탭
                 MacPersonActionsTab(person: person)
                     .tabItem {
                         Label("활동", systemImage: "checklist")
-                    }
-                    .tag(1)
-
-                // 기록 탭
-                MacPersonRecordsTab(person: person)
-                    .tabItem {
-                        Label("기록", systemImage: "calendar")
                     }
                     .tag(2)
 
@@ -54,7 +54,15 @@ struct MacPersonDetailView: View {
                         Label("분석", systemImage: "chart.bar.fill")
                     }
                     .tag(3)
+
+                // 정보 탭
+                MacPersonInfoTab(person: person)
+                    .tabItem {
+                        Label("정보", systemImage: "info.circle")
+                    }
+                    .tag(4)
             }
+            .tabViewStyle(.automatic)
         }
     }
 
@@ -548,150 +556,789 @@ struct MacAddActionSheet: View {
 // MARK: - Records Tab
 
 struct MacPersonRecordsTab: View {
+    @Environment(\.modelContext) private var context
     @Bindable var person: Person
-    @StateObject private var calendarManager = CalendarManager.shared
-    @StateObject private var mentoringManager = MentoringManager()
+    @State private var newInteractionType: InteractionType?
+    @State private var showingCreateInteraction = false
+    @State private var showingMemoArchive = false
 
-    @State private var showingAddEvent = false
-    @State private var showingMentoringSession = false
-    @State private var upcomingEvents: [EKEvent] = []
-
-    private var sortedMeetings: [MeetingRecord] {
-        person.meetingRecords.sorted { $0.date > $1.date }
-    }
-
-    private var personMentoringSessions: [MentoringSession] {
-        mentoringManager.sessions.filter { $0.personId == person.id }
+    // 최근 상호작용들 (최대 10개)
+    private var recentInteractions: [InteractionRecord] {
+        person.getAllInteractionRecordsSorted().prefix(10).map { $0 }
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 일정 추가 버튼
-            HStack {
-                Text("일정 및 기록")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(spacing: 20) {
+                // 빠른 메모 섹션
+                quickMemoSection
 
-                Spacer()
+                // 기록하기 버튼들
+                recordingButtonsSection
 
-                Button {
-                    showingMentoringSession = true
-                } label: {
-                    Label("멘토링 기록", systemImage: "person.2.fill")
-                }
-
-                Button {
-                    showingAddEvent = true
-                } label: {
-                    Label("일정 추가", systemImage: "plus.circle.fill")
-                }
+                // 최근 상호작용 기록
+                recentInteractionsSection
             }
-            .padding(.horizontal)
-            .padding(.top)
-
-            Divider()
-                .padding(.vertical, 8)
-
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    // 멘토링 세션 섹션
-                    if !personMentoringSessions.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Text("멘토링 세션")
-                                    .font(.headline)
-                                    .foregroundStyle(.purple)
-                                Spacer()
-                                Text("\(personMentoringSessions.count)회")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            ForEach(personMentoringSessions.prefix(3)) { session in
-                                MacMentoringSessionCompactCard(session: session)
-                            }
-
-                            if personMentoringSessions.count > 3 {
-                                Button {
-                                    showingMentoringSession = true
-                                } label: {
-                                    HStack {
-                                        Text("전체 보기 (\(personMentoringSessions.count)회)")
-                                            .font(.caption)
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption2)
-                                    }
-                                    .foregroundStyle(.purple)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal)
-
-                        Divider()
-                            .padding(.vertical, 8)
-                    }
-
-                    // 다가오는 일정 섹션
-                    if !upcomingEvents.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("다가오는 일정")
-                                .font(.headline)
-                                .foregroundStyle(.blue)
-
-                            ForEach(upcomingEvents, id: \.eventIdentifier) { event in
-                                MacUpcomingEventRow(event: event)
-                            }
-                        }
-                        .padding(.horizontal)
-
-                        Divider()
-                            .padding(.vertical, 8)
-                    }
-
-                    // 과거 미팅 기록 섹션
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("과거 기록")
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-
-                        if sortedMeetings.isEmpty {
-                            VStack(spacing: 12) {
-                                Image(systemName: "calendar.badge.clock")
-                                    .font(.system(size: 50))
-                                    .foregroundStyle(.secondary)
-                                Text("아직 미팅 기록이 없습니다")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 20)
-                        } else {
-                            ForEach(sortedMeetings) { meeting in
-                                MacMeetingRecordRow(meeting: meeting)
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-                .padding(.bottom)
+            .padding()
+        }
+        .sheet(isPresented: $showingCreateInteraction) {
+            if let type = newInteractionType {
+                MacCreateInteractionSheet(
+                    person: person,
+                    interactionType: type,
+                    context: context
+                )
             }
         }
-        .sheet(isPresented: $showingAddEvent) {
-            MacAddEventSheet(person: person) { _ in
-                loadUpcomingEvents()
-            }
-        }
-        .sheet(isPresented: $showingMentoringSession) {
-            MacPersonMentoringSessionsView(person: person, manager: mentoringManager)
-                .frame(minWidth: 700, minHeight: 500)
-        }
-        .onAppear {
-            loadUpcomingEvents()
+        .sheet(isPresented: $showingMemoArchive) {
+            MacQuickMemoArchiveView(person: person, context: context)
         }
     }
 
-    private func loadUpcomingEvents() {
-        upcomingEvents = calendarManager.fetchUpcomingEvents(for: person, days: 30)
+    // MARK: - 빠른 메모 섹션
+
+    @ViewBuilder
+    private var quickMemoSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("빠른 메모")
+                        .font(.headline)
+                    Text("대화 내용을 자유롭게 메모하세요. 저장하면 아카이브에 보관됩니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                // 아카이브 보기 버튼
+                if !person.archivedMemos.isEmpty {
+                    Button {
+                        showingMemoArchive = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "archivebox")
+                                .font(.caption)
+                            Text("\(person.archivedMemos.count)개 저장됨")
+                                .font(.caption)
+                        }
+                        .foregroundStyle(.blue)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            TextEditor(text: $person.quickMemo)
+                .frame(minHeight: 100)
+                .padding(8)
+                .background(Color(NSColor.textBackgroundColor))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                )
+                .overlay(alignment: .topLeading) {
+                    if person.quickMemo.isEmpty {
+                        Text("예: 오늘 만나서 프로젝트 이야기를 나눴어요...")
+                            .font(.body)
+                            .foregroundStyle(.secondary.opacity(0.5))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 16)
+                            .allowsHitTesting(false)
+                    }
+                }
+
+            // 저장 버튼
+            Button {
+                saveQuickMemo()
+            } label: {
+                HStack {
+                    Image(systemName: "archivebox.fill")
+                    Text("저장하고 초기화")
+                        .fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(person.quickMemo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray : Color.green)
+                .foregroundStyle(.white)
+                .cornerRadius(10)
+            }
+            .disabled(person.quickMemo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .buttonStyle(.plain)
+        }
+        .padding()
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(12)
+    }
+
+    // MARK: - 기록하기 버튼 섹션
+
+    @ViewBuilder
+    private var recordingButtonsSection: some View {
+        VStack(spacing: 12) {
+            Text("상호작용 기록하기")
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 12) {
+                ForEach(InteractionType.allCases, id: \.self) { type in
+                    Button {
+                        newInteractionType = type
+                        showingCreateInteraction = true
+                    } label: {
+                        VStack(spacing: 8) {
+                            Text(type.emoji)
+                                .font(.system(size: 40))
+
+                            Text(type.title)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(type.color.opacity(0.1))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(type.color.opacity(0.3), lineWidth: 1)
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    // MARK: - 최근 상호작용 섹션
+
+    @ViewBuilder
+    private var recentInteractionsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("최근 기록")
+                .font(.headline)
+
+            if recentInteractions.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.secondary)
+                    Text("아직 상호작용 기록이 없어요")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(12)
+            } else {
+                ForEach(recentInteractions) { record in
+                    MacInteractionRecordRow(record: record)
+                }
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    private func saveQuickMemo() {
+        let trimmedMemo = person.quickMemo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedMemo.isEmpty else { return }
+
+        // 1. 아카이브에 저장
+        let archive = QuickMemoArchive(content: trimmedMemo, createdDate: Date())
+        archive.person = person
+        context.insert(archive)
+        person.archivedMemos.append(archive)
+
+        // 2. InteractionRecord 생성 (메모도 접촉 기록으로 간주)
+        let interactionRecord = person.addInteractionRecord(
+            type: .contact,  // 스몰토크로 기록
+            date: Date(),
+            notes: "빠른 메모: \(trimmedMemo.prefix(100))",  // 처음 100자만 저장
+            duration: nil,
+            location: nil,
+            relatedMeetingRecord: nil
+        )
+
+        // 3. 관계 상태 업데이트
+        person.updateRelationshipState()
+
+        do {
+            try context.save()
+            person.quickMemo = ""
+            print("✅ 빠른 메모 저장 완료 - InteractionRecord 생성 및 관계 상태 업데이트됨")
+        } catch {
+            print("❌ 빠른 메모 저장 실패: \(error)")
+        }
+    }
+}
+
+// MARK: - Calendar Tab
+
+struct MacPersonCalendarTab: View {
+    @Environment(\.modelContext) private var context
+    @Bindable var person: Person
+    @StateObject private var calendarManager = CalendarManager.shared
+    @State private var selectedDate = Date()
+    @State private var currentMonth = Date()
+    @State private var showingAddEvent = false
+
+    private var calendar: Calendar {
+        Calendar.current
+    }
+
+    // 선택된 날짜의 이벤트들
+    private var eventsForSelectedDate: [CalendarEvent] {
+        let events = getCalendarEvents()
+        return events.filter { calendar.isDate($0.date, inSameDayAs: selectedDate) }
+            .sorted { $0.date < $1.date }
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // 왼쪽: 캘린더
+            VStack(spacing: 0) {
+                // 월 네비게이션
+                monthNavigationBar
+
+                Divider()
+
+                // 캘린더 그리드
+                calendarGrid
+                    .padding()
+            }
+            .frame(width: 400)
+            .background(Color(NSColor.controlBackgroundColor))
+
+            Divider()
+
+            // 오른쪽: 선택된 날짜의 일정
+            VStack(spacing: 0) {
+                // 선택된 날짜 헤더
+                selectedDateHeader
+
+                Divider()
+
+                // 일정 목록
+                if eventsForSelectedDate.isEmpty {
+                    emptyEventsView
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(eventsForSelectedDate) { event in
+                                CalendarEventRow(event: event)
+                            }
+                        }
+                        .padding()
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - View Components
+
+    @ViewBuilder
+    private var monthNavigationBar: some View {
+        HStack {
+            Button {
+                changeMonth(by: -1)
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+
+            Spacer()
+
+            Text(currentMonth, format: .dateTime.year().month(.wide))
+                .font(.headline)
+
+            Spacer()
+
+            Button {
+                changeMonth(by: 1)
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+
+            Button {
+                currentMonth = Date()
+                selectedDate = Date()
+            } label: {
+                Text("오늘")
+            }
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private var calendarGrid: some View {
+        VStack(spacing: 8) {
+            // 요일 헤더
+            weekdayHeader
+
+            // 날짜 그리드
+            let days = generateDaysInMonth()
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                ForEach(days, id: \.self) { date in
+                    if let date = date {
+                        calendarDayCell(for: date)
+                    } else {
+                        Color.clear
+                            .frame(height: 60)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var weekdayHeader: some View {
+        HStack(spacing: 0) {
+            ForEach(calendar.shortWeekdaySymbols, id: \.self) { weekday in
+                Text(weekday)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func calendarDayCell(for date: Date) -> some View {
+        let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
+        let isToday = calendar.isDateInToday(date)
+        let isCurrentMonth = calendar.isDate(date, equalTo: currentMonth, toGranularity: .month)
+        let eventCount = getEventCount(for: date)
+
+        VStack(spacing: 4) {
+            Text("\(calendar.component(.day, from: date))")
+                .font(.subheadline)
+                .fontWeight(isToday ? .bold : .regular)
+                .foregroundStyle(isCurrentMonth ? .primary : .secondary)
+
+            if eventCount > 0 {
+                HStack(spacing: 2) {
+                    ForEach(0..<min(eventCount, 3), id: \.self) { _ in
+                        Circle()
+                            .fill(Color.blue)
+                            .frame(width: 4, height: 4)
+                    }
+                    if eventCount > 3 {
+                        Text("+")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 60)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? Color.blue.opacity(0.2) : (isToday ? Color.green.opacity(0.1) : Color.clear))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.blue : (isToday ? Color.green : Color.clear), lineWidth: 2)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectedDate = date
+        }
+    }
+
+    @ViewBuilder
+    private var selectedDateHeader: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(selectedDate, format: .dateTime.year().month().day())
+                    .font(.headline)
+                Text(selectedDate, format: .dateTime.weekday(.wide))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text("\(eventsForSelectedDate.count)개 일정")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button {
+                showingAddEvent = true
+            } label: {
+                Label("일정 추가", systemImage: "plus.circle.fill")
+            }
+        }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+        .sheet(isPresented: $showingAddEvent) {
+            MacAddEventSheet(person: person, selectedDate: selectedDate) { _ in
+                // 일정 추가 후 새로고침
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var emptyEventsView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "calendar.badge.plus")
+                .font(.system(size: 50))
+                .foregroundStyle(.secondary)
+
+            Text("이 날짜에 일정이 없습니다")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            Button {
+                showingAddEvent = true
+            } label: {
+                Label("일정 추가하기", systemImage: "plus.circle.fill")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Helper Methods
+
+    private func changeMonth(by months: Int) {
+        if let newMonth = calendar.date(byAdding: .month, value: months, to: currentMonth) {
+            currentMonth = newMonth
+        }
+    }
+
+    private func generateDaysInMonth() -> [Date?] {
+        guard let monthInterval = calendar.dateInterval(of: .month, for: currentMonth),
+              let monthFirstWeek = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start) else {
+            return []
+        }
+
+        var days: [Date?] = []
+        let monthEnd = monthInterval.end
+        var currentDate = monthFirstWeek.start
+
+        while currentDate < monthEnd {
+            if calendar.isDate(currentDate, equalTo: monthInterval.start, toGranularity: .month) {
+                days.append(currentDate)
+            } else if currentDate < monthInterval.start {
+                days.append(nil)
+            } else {
+                break
+            }
+
+            if let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) {
+                currentDate = nextDate
+            } else {
+                break
+            }
+        }
+
+        // 마지막 주 채우기
+        while days.count % 7 != 0 {
+            days.append(nil)
+        }
+
+        return days
+    }
+
+    private func getEventCount(for date: Date) -> Int {
+        let events = getCalendarEvents()
+        return events.filter { calendar.isDate($0.date, inSameDayAs: date) }.count
+    }
+
+    private func getCalendarEvents() -> [CalendarEvent] {
+        var events: [CalendarEvent] = []
+
+        // 1. 상호작용 기록
+        for record in person.getAllInteractionRecordsSorted() {
+            events.append(CalendarEvent(
+                id: "interaction-\(record.id)",
+                date: record.date,
+                title: record.type.title,
+                type: .interaction(record.type),
+                details: record.notes
+            ))
+        }
+
+        // 2. 액션 마감일 (reminderDate가 있는 경우)
+        for personAction in person.actions where !personAction.isCompleted {
+            if let reminderDate = personAction.reminderDate, let action = personAction.action {
+                events.append(CalendarEvent(
+                    id: "action-\(personAction.id)",
+                    date: reminderDate,
+                    title: action.title,
+                    type: .actionDue(isCritical: action.type == .critical),
+                    details: personAction.note
+                ))
+            }
+        }
+
+        // 3. 시스템 캘린더 일정
+        let systemEvents = calendarManager.fetchUpcomingEvents(for: person, days: 365)
+        for event in systemEvents {
+            events.append(CalendarEvent(
+                id: "system-\(event.eventIdentifier ?? UUID().uuidString)",
+                date: event.startDate,
+                title: event.title ?? "제목 없음",
+                type: .systemCalendar,
+                details: event.notes
+            ))
+        }
+
+        return events
+    }
+}
+
+// MARK: - Calendar Event Model
+
+struct CalendarEvent: Identifiable {
+    let id: String
+    let date: Date
+    let title: String
+    let type: CalendarEventType
+    let details: String?
+}
+
+enum CalendarEventType {
+    case interaction(InteractionType)
+    case actionDue(isCritical: Bool)
+    case systemCalendar
+    case relationshipChange
+
+    var color: Color {
+        switch self {
+        case .interaction(let type):
+            return type.color
+        case .actionDue(let isCritical):
+            return isCritical ? .red : .orange
+        case .systemCalendar:
+            return .blue
+        case .relationshipChange:
+            return .purple
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .interaction(let type):
+            return type.systemImage
+        case .actionDue:
+            return "checklist"
+        case .systemCalendar:
+            return "calendar"
+        case .relationshipChange:
+            return "heart.fill"
+        }
+    }
+}
+
+// MARK: - Calendar Event Row
+
+struct CalendarEventRow: View {
+    let event: CalendarEvent
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // 시간
+            VStack(alignment: .leading, spacing: 2) {
+                Text(event.date, style: .time)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 60, alignment: .leading)
+
+            // 아이콘과 타입
+            Image(systemName: event.type.icon)
+                .foregroundStyle(event.type.color)
+                .frame(width: 24)
+
+            // 내용
+            VStack(alignment: .leading, spacing: 4) {
+                Text(event.title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                if let details = event.details, !details.isEmpty {
+                    Text(details)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer()
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(event.type.color.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(event.type.color.opacity(0.3), lineWidth: 1)
+                )
+        )
+    }
+}
+
+// MARK: - Mac Interaction Record Row
+
+struct MacInteractionRecordRow: View {
+    let record: InteractionRecord
+
+    private func formatRelativeDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: .now)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // 이모지
+            Text(record.type.emoji)
+                .font(.title)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(record.type.title)
+                        .font(.headline)
+                        .foregroundStyle(record.type.color)
+
+                    Spacer()
+
+                    Text(formatRelativeDate(record.date))
+                        .font(.caption)
+                        .foregroundStyle(record.isRecent ? .green : .secondary)
+                }
+
+                Text(record.date.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let notes = record.notes, !notes.isEmpty {
+                    Text(notes)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(record.isRecent ? record.type.color.opacity(0.1) : Color.gray.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(record.isRecent ? record.type.color.opacity(0.3) : Color.clear, lineWidth: 1)
+                )
+        )
+    }
+}
+
+// MARK: - Mac Create Interaction Sheet
+
+struct MacCreateInteractionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let person: Person
+    let interactionType: InteractionType
+    let context: ModelContext
+
+    @State private var date = Date()
+    @State private var notes = ""
+    @State private var location = ""
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // 헤더
+            HStack {
+                Text("새 \(interactionType.title) 기록")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Spacer()
+                Button("취소") {
+                    dismiss()
+                }
+            }
+            .padding()
+            .background(Color(NSColor.controlBackgroundColor))
+
+            Divider()
+
+            // 폼
+            Form {
+                Section {
+                    HStack {
+                        Text(interactionType.emoji)
+                            .font(.largeTitle)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(interactionType.title)
+                                .font(.headline)
+                            Text("새로운 \(interactionType.title) 기록을 추가하세요")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Section("날짜 및 시간") {
+                    DatePicker("날짜와 시간", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                        .datePickerStyle(.graphical)
+                }
+
+                Section("장소") {
+                    TextField("어디서 만났나요?", text: $location)
+                }
+
+                Section("메모") {
+                    TextEditor(text: $notes)
+                        .frame(minHeight: 100)
+                }
+            }
+            .formStyle(.grouped)
+
+            // 저장 버튼
+            HStack {
+                Spacer()
+                Button("저장") {
+                    saveRecord()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding()
+            .background(Color(NSColor.controlBackgroundColor))
+        }
+        .frame(minWidth: 500, minHeight: 600)
+    }
+
+    private func saveRecord() {
+        let finalNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes
+        let finalLocation = location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : location
+
+        _ = person.addInteractionRecord(
+            type: interactionType,
+            date: date,
+            notes: finalNotes,
+            duration: nil,
+            location: finalLocation,
+            relatedMeetingRecord: nil
+        )
+
+        person.updateRelationshipState()
+
+        do {
+            try context.save()
+            print("✅ 새 상호작용 기록 생성")
+            dismiss()
+        } catch {
+            print("❌ 상호작용 기록 생성 실패: \(error)")
+        }
     }
 }
 
@@ -1424,6 +2071,176 @@ struct StatCard: View {
         .padding()
         .background(color.opacity(0.1))
         .cornerRadius(12)
+    }
+}
+
+// MARK: - Mac Quick Memo Archive View
+
+struct MacQuickMemoArchiveView: View {
+    @Environment(\.dismiss) private var dismiss
+    let person: Person
+    let context: ModelContext
+
+    // 최신순으로 정렬된 아카이브 메모들
+    private var sortedMemos: [QuickMemoArchive] {
+        person.archivedMemos.sorted { $0.createdDate > $1.createdDate }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // 헤더
+            HStack {
+                Text("메모 아카이브")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Spacer()
+                Button("닫기") {
+                    dismiss()
+                }
+            }
+            .padding()
+            .background(Color(NSColor.controlBackgroundColor))
+
+            Divider()
+
+            // 메모 목록
+            if sortedMemos.isEmpty {
+                VStack(spacing: 20) {
+                    Image(systemName: "archivebox")
+                        .font(.system(size: 60))
+                        .foregroundStyle(.secondary)
+
+                    Text("저장된 메모가 없어요")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    Text("빠른 메모를 작성하고 저장하면 여기에 보관됩니다.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(sortedMemos) { memo in
+                            MacMemoArchiveRow(memo: memo, onCopy: {
+                                copyToClipboard(memo.content)
+                            }, onDelete: {
+                                deleteMemo(memo)
+                            })
+                        }
+                    }
+                    .padding()
+                }
+            }
+        }
+        .frame(minWidth: 500, minHeight: 400)
+    }
+
+    private func copyToClipboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        print("📋 메모 복사됨: \(text.prefix(50))...")
+    }
+
+    private func deleteMemo(_ memo: QuickMemoArchive) {
+        context.delete(memo)
+        do {
+            try context.save()
+            print("✅ 메모 삭제 완료")
+        } catch {
+            print("❌ 메모 삭제 실패: \(error)")
+        }
+    }
+}
+
+// MARK: - Mac Memo Archive Row
+
+struct MacMemoArchiveRow: View {
+    let memo: QuickMemoArchive
+    let onCopy: () -> Void
+    let onDelete: () -> Void
+    @State private var showingCopied = false
+
+    private func formatRelativeDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: .now)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // 헤더: 날짜 및 버튼
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(memo.createdDate.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(formatRelativeDate(memo.createdDate))
+                        .font(.caption2)
+                        .foregroundStyle(.blue)
+                }
+
+                Spacer()
+
+                // 복사 버튼
+                Button {
+                    onCopy()
+                    withAnimation {
+                        showingCopied = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        withAnimation {
+                            showingCopied = false
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: showingCopied ? "checkmark" : "doc.on.doc")
+                            .font(.caption)
+                        if showingCopied {
+                            Text("복사됨")
+                                .font(.caption2)
+                        }
+                    }
+                    .foregroundStyle(showingCopied ? .green : .blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(showingCopied ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+
+                // 삭제 버튼
+                Button {
+                    onDelete()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .padding(6)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Divider()
+
+            // 메모 내용
+            Text(memo.content)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+        }
+        .padding()
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+        )
     }
 }
 

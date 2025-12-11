@@ -361,16 +361,23 @@ extension Person {
     
     /// 관계 상태를 자동으로 업데이트하는 메인 메서드
     /// 계산된 점수를 바탕으로 관계 상태를 갱신
+    /// 소홀함 상태면 무조건 "멀어짐"으로 조정
     /// 상태 변경 시 콘솔에 로그를 출력하여 디버깅 지원
     func updateRelationshipState() {
-        let calculatedState = calculateRelationshipState()
+        var calculatedState = calculateRelationshipState()
         let currentScore = calculateRelationshipScore()
-        
+
+        // 소홀함 상태라면 무조건 "멀어짐"으로 조정
+        if isNeglected && calculatedState != .distant {
+            calculatedState = .distant
+            print("⚠️ [RelationshipState] \(name)님은 소홀함 상태로 인해 '멀어짐'으로 조정됨")
+        }
+
         // 상태가 실제로 변경된 경우에만 업데이트 수행
         if state != calculatedState {
             let oldState = state
             state = calculatedState
-            
+
             print("🔄 [RelationshipState] \(name)님과의 관계 상태 변경: \(oldState.rawValue) → \(calculatedState.rawValue) (점수: \(Int(currentScore)))")
         } else {
             // 상태 변경은 없지만 현재 점수를 로그로 출력
