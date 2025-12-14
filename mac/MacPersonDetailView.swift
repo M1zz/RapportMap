@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import EventKit
+import UniformTypeIdentifiers
 
 struct MacPersonDetailView: View {
     @Environment(\.modelContext) private var context
@@ -15,6 +16,7 @@ struct MacPersonDetailView: View {
 
     @State private var selectedTab = 0
     @State private var showingImagePicker = false
+    @State private var showingBadgeDetails = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,28 +43,51 @@ struct MacPersonDetailView: View {
                     }
                     .tag(1)
 
+                // 타임라인 탭
+                MacPersonTimelineTab(person: person)
+                    .tabItem {
+                        if person.timelineBadgeCount > 0 {
+                            Label("타임라인", systemImage: "clock.arrow.circlepath")
+                            Text("\(person.timelineBadgeCount)")
+                        } else {
+                            Label("타임라인", systemImage: "clock.arrow.circlepath")
+                        }
+                    }
+                    .badge(person.timelineBadgeCount)
+                    .tag(2)
+
                 // 활동 탭
                 MacPersonActionsTab(person: person)
                     .tabItem {
-                        Label("활동", systemImage: "checklist")
+                        if person.actionsBadgeCount > 0 {
+                            Label("활동", systemImage: "checklist")
+                            Text("\(person.actionsBadgeCount)")
+                        } else {
+                            Label("활동", systemImage: "checklist")
+                        }
                     }
-                    .tag(2)
+                    .badge(person.actionsBadgeCount)
+                    .tag(3)
 
                 // 분석 탭
                 MacPersonAnalyticsTab(person: person)
                     .tabItem {
                         Label("분석", systemImage: "chart.bar.fill")
                     }
-                    .tag(3)
+                    .tag(4)
 
                 // 정보 탭
                 MacPersonInfoTab(person: person)
                     .tabItem {
                         Label("정보", systemImage: "info.circle")
                     }
-                    .tag(4)
+                    .tag(5)
             }
             .tabViewStyle(.automatic)
+        }
+        .popover(isPresented: $showingBadgeDetails) {
+            BadgeDetailsPopover(person: person, selectedTab: $selectedTab)
+                .frame(width: 350)
         }
     }
 
@@ -104,38 +129,25 @@ struct MacPersonDetailView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                // 관계 상태
+                // 관계 상태 (읽기 전용 - 자동 계산됨)
                 HStack(spacing: 12) {
-                    Menu {
-                        ForEach(RelationshipState.allCases, id: \.self) { state in
-                            Button {
-                                person.state = state
-                            } label: {
-                                HStack {
-                                    Circle()
-                                        .fill(state.color)
-                                        .frame(width: 10, height: 10)
-                                    Text(state.localizedName)
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(person.state.color)
-                                .frame(width: 10, height: 10)
-                            Text(person.state.localizedName)
-                                .font(.callout)
-                            Image(systemName: "chevron.down")
-                                .font(.caption)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule()
-                                .fill(Color.gray.opacity(0.1))
-                        )
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(person.state.color)
+                            .frame(width: 10, height: 10)
+                        Text(person.state.localizedName)
+                            .font(.callout)
+                        Image(systemName: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(Color.gray.opacity(0.1))
+                    )
+                    .help("관계 상태는 상호작용 빈도와 액션 완료율을 기반으로 자동 계산됩니다")
 
                     // 소홀 상태
                     if person.isNeglected {
@@ -152,15 +164,59 @@ struct MacPersonDetailView: View {
 
             Spacer()
 
-            // 미완료 액션 개수
-            VStack {
-                let incompleteCount = person.actions.filter { !$0.isCompleted }.count
-                Text("\(incompleteCount)")
-                    .font(.title)
-                    .fontWeight(.bold)
-                Text("미완료 액션")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            // 배지 섹션 (탭 가능)
+            HStack(spacing: 16) {
+                // 알림 버튼
+                if person.hasBadges {
+                    Button {
+                        showingBadgeDetails.toggle()
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: "bell.badge.fill")
+                                .font(.title2)
+                                .foregroundStyle(.red)
+                            Text("알림")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.red.opacity(0.1))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(Color.red.opacity(0.3), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help("배지가 생긴 이유 보기")
+                }
+
+                // 미완료 액션 배지 (긴급 포함)
+                if person.incompleteActionsCount > 0 {
+                    MacBadgeButton(
+                        count: person.incompleteActionsCount,
+                        title: person.criticalActionsCount > 0 ? "미완료 (긴급 \(person.criticalActionsCount))" : "미완료 액션",
+                        color: person.criticalActionsCount > 0 ? .red : .blue,
+                        icon: person.criticalActionsCount > 0 ? "exclamationmark.circle.fill" : "checkmark.circle"
+                    ) {
+                        selectedTab = 3 // 활동 탭으로 이동
+                    }
+                }
+
+                // 중요 항목 배지
+                if person.importantItemsCount > 0 {
+                    MacBadgeButton(
+                        count: person.importantItemsCount,
+                        title: "중요 항목",
+                        color: .yellow,
+                        icon: "star.fill"
+                    ) {
+                        selectedTab = 2 // 타임라인 탭으로 이동
+                    }
+                }
             }
         }
     }
@@ -169,9 +225,11 @@ struct MacPersonDetailView: View {
 // MARK: - Info Tab
 
 struct MacPersonInfoTab: View {
+    @Environment(\.modelContext) private var context
     @Bindable var person: Person
     @StateObject private var mentoringManager = MentoringManager()
     @State private var showingMentoringSession = false
+    @State private var showingDeleteConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -189,34 +247,88 @@ struct MacPersonInfoTab: View {
 
             Divider()
 
-            Form {
-                Section("기본 정보") {
-                    TextField("이름", text: $person.name)
-                    TextField("연락처", text: $person.contact)
-                    TextField("선호 호칭", text: $person.preferredName)
-                }
+            ScrollView {
+                VStack(spacing: 0) {
+                    Form {
+                        Section("기본 정보") {
+                            TextField("이름", text: $person.name)
+                            TextField("연락처", text: $person.contact)
+                            TextField("선호 호칭", text: $person.preferredName)
+                        }
 
-                Section("관계 정보") {
-                    TextField("관심사", text: $person.interests, axis: .vertical)
-                        .lineLimit(3...6)
-                    TextField("취향/선호", text: $person.preferences, axis: .vertical)
-                        .lineLimit(3...6)
-                    TextField("중요한 날짜", text: $person.importantDates, axis: .vertical)
-                        .lineLimit(3...6)
-                }
+                        Section("관계 정보") {
+                            TextField("관심사", text: $person.interests, axis: .vertical)
+                                .lineLimit(3...6)
+                            TextField("취향/선호", text: $person.preferences, axis: .vertical)
+                                .lineLimit(3...6)
+                            TextField("중요한 날짜", text: $person.importantDates, axis: .vertical)
+                                .lineLimit(3...6)
+                        }
 
-                Section("빠른 메모") {
-                    TextEditor(text: $person.quickMemo)
-                        .frame(minHeight: 100)
-                        .font(.body)
+                        Section("빠른 메모") {
+                            TextEditor(text: $person.quickMemo)
+                                .frame(minHeight: 100)
+                                .font(.body)
+                        }
+                    }
+                    .formStyle(.grouped)
+                    .padding()
+
+                    // 위험 작업 섹션
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("⚠️ 위험 작업")
+                            .font(.headline)
+                            .foregroundStyle(.red)
+
+                        Button(role: .destructive) {
+                            showingDeleteConfirmation = true
+                        } label: {
+                            Label("사람 완전 삭제", systemImage: "person.fill.xmark")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                        .controlSize(.large)
+
+                        Text("이 사람과 모든 관련 데이터가 영구적으로 삭제됩니다.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .background(Color.red.opacity(0.05))
+                    .cornerRadius(12)
+                    .padding()
                 }
             }
-            .formStyle(.grouped)
-            .padding()
         }
         .sheet(isPresented: $showingMentoringSession) {
             MacPersonMentoringSessionsView(person: person, manager: mentoringManager)
                 .frame(minWidth: 700, minHeight: 500)
+        }
+        .alert("사람 삭제", isPresented: $showingDeleteConfirmation) {
+            Button("취소", role: .cancel) { }
+            Button("삭제", role: .destructive) {
+                deletePerson()
+            }
+        } message: {
+            Text("\(person.name)님을 완전히 삭제하시겠습니까?\n\n모든 상호작용, 미팅, 대화, 메모, 액션이 함께 삭제되며 복구할 수 없습니다.")
+        }
+    }
+
+    private func deletePerson() {
+        let personName = person.name
+        context.delete(person)
+
+        do {
+            try context.save()
+            print("✅ \(personName) 완전 삭제됨")
+
+            // 윈도우 닫기
+            if let window = NSApplication.shared.keyWindow {
+                window.close()
+            }
+        } catch {
+            print("❌ 사람 삭제 실패: \(error)")
         }
     }
 }
@@ -228,43 +340,129 @@ struct MacPersonActionsTab: View {
     @Bindable var person: Person
     @StateObject private var mentoringManager = MentoringManager()
     @State private var showingMentoringSession = false
-    @State private var selectedPhase: ActionPhase = .surface
+    @State private var selectedPhase: ActionPhase? = nil  // nil = 전체 보기
+    @State private var showCompletedActions = false
     @Query(sort: \RapportAction.order) private var allRapportActions: [RapportAction]
 
     private var actionsByPhase: [ActionPhase: [PersonAction]] {
-        Dictionary(grouping: person.actions.filter { $0.isVisibleInDetail }) { action in
+        let filtered = person.actions.filter { action in
+            let phaseMatch = action.isVisibleInDetail
+            let completionMatch = showCompletedActions ? true : (action.completedDate == nil)
+            return phaseMatch && completionMatch
+        }
+        return Dictionary(grouping: filtered) { action in
             action.action?.phase ?? .surface
         }
     }
 
+    // 각 Phase별 미완료 개수
+    private func incompleteCount(for phase: ActionPhase) -> Int {
+        person.actions.filter { action in
+            action.isVisibleInDetail &&
+            action.completedDate == nil &&
+            action.action?.phase == phase
+        }.count
+    }
+
     private var actionsForSelectedPhase: [PersonAction] {
-        actionsByPhase[selectedPhase]?.sorted { ($0.action?.order ?? 999) < ($1.action?.order ?? 999) } ?? []
+        if let selectedPhase = selectedPhase {
+            // 특정 Phase 선택
+            return actionsByPhase[selectedPhase]?.sorted { ($0.action?.order ?? 999) < ($1.action?.order ?? 999) } ?? []
+        } else {
+            // 전체 보기 - Phase별로 그룹화하여 정렬
+            return actionsByPhase.values.flatMap { $0 }.sorted { action1, action2 in
+                let phase1 = action1.action?.phase ?? .surface
+                let phase2 = action2.action?.phase ?? .surface
+                if phase1 != phase2 {
+                    return phase1.rawValue < phase2.rawValue
+                }
+                return (action1.action?.order ?? 999) < (action2.action?.order ?? 999)
+            }
+        }
+    }
+
+    private var incompleteCount: Int {
+        person.actions.filter { $0.completedDate == nil }.count
+    }
+
+    private var completedCount: Int {
+        person.actions.filter { $0.completedDate != nil }.count
     }
 
     private var availableRapportActions: [RapportAction] {
-        allRapportActions.filter { $0.phase == selectedPhase && $0.isActive }
+        guard let selectedPhase = selectedPhase else { return [] }
+
+        // 이미 추가된 액션 ID들
+        let addedActionIds = Set(person.actions.filter { $0.isVisibleInDetail }.compactMap { $0.action?.id })
+
+        // 아직 추가하지 않은 액션만 표시
+        return allRapportActions.filter { rapportAction in
+            rapportAction.phase == selectedPhase &&
+            rapportAction.isActive &&
+            !addedActionIds.contains(rapportAction.id)
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             // 헤더
-            HStack {
-                // Phase 선택기
-                Picker("Phase", selection: $selectedPhase) {
-                    ForEach(ActionPhase.allCases) { phase in
-                        Text("\(phase.emoji) \(phase.rawValue)")
-                            .tag(phase)
+            VStack(spacing: 12) {
+                HStack {
+                    // Phase 선택기
+                    Picker("Phase", selection: $selectedPhase) {
+                        Text("전체")
+                            .tag(nil as ActionPhase?)
+                        ForEach(ActionPhase.allCases) { phase in
+                            let count = incompleteCount(for: phase)
+                            if count > 0 {
+                                Text("\(phase.emoji) \(phase.rawValue) (\(count))")
+                                    .tag(phase as ActionPhase?)
+                            } else {
+                                Text("\(phase.emoji) \(phase.rawValue)")
+                                    .tag(phase as ActionPhase?)
+                            }
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 200)
+
+                    Spacer()
+
+                    Button {
+                        showingMentoringSession = true
+                    } label: {
+                        Label("멘토링 기록", systemImage: "person.2.fill")
                     }
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 400)
 
-                Spacer()
+                // 통계 및 필터
+                HStack {
+                    HStack(spacing: 16) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(.blue)
+                                .frame(width: 8, height: 8)
+                            Text("미완료: \(incompleteCount)")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                        }
 
-                Button {
-                    showingMentoringSession = true
-                } label: {
-                    Label("멘토링 기록", systemImage: "person.2.fill")
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(.green)
+                                .frame(width: 8, height: 8)
+                            Text("완료: \(completedCount)")
+                                .font(.caption)
+                        }
+                    }
+
+                    Spacer()
+
+                    Toggle(isOn: $showCompletedActions) {
+                        Text("완료된 항목 표시")
+                            .font(.caption)
+                    }
+                    .toggleStyle(.switch)
                 }
             }
             .padding()
@@ -274,9 +472,15 @@ struct MacPersonActionsTab: View {
 
             // Phase 설명
             HStack {
-                Text(selectedPhase.description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let selectedPhase = selectedPhase {
+                    Text(selectedPhase.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("모든 단계의 미완료 액션을 표시합니다")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
             }
             .padding(.horizontal)
@@ -557,9 +761,8 @@ struct MacAddActionSheet: View {
 
 struct MacPersonRecordsTab: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.openWindow) private var openWindow
     @Bindable var person: Person
-    @State private var newInteractionType: InteractionType?
-    @State private var showingCreateInteraction = false
     @State private var showingMemoArchive = false
 
     // 최근 상호작용들 (최대 10개)
@@ -573,6 +776,9 @@ struct MacPersonRecordsTab: View {
                 // 빠른 메모 섹션
                 quickMemoSection
 
+                // 대화 기록 섹션 (고민/질문/약속)
+                MacConversationRecordsView(person: person)
+
                 // 기록하기 버튼들
                 recordingButtonsSection
 
@@ -581,17 +787,9 @@ struct MacPersonRecordsTab: View {
             }
             .padding()
         }
-        .sheet(isPresented: $showingCreateInteraction) {
-            if let type = newInteractionType {
-                MacCreateInteractionSheet(
-                    person: person,
-                    interactionType: type,
-                    context: context
-                )
-            }
-        }
-        .sheet(isPresented: $showingMemoArchive) {
+        .popover(isPresented: $showingMemoArchive, arrowEdge: .trailing) {
             MacQuickMemoArchiveView(person: person, context: context)
+                .frame(width: 600, height: 500)
         }
     }
 
@@ -687,8 +885,9 @@ struct MacPersonRecordsTab: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 12) {
                 ForEach(InteractionType.allCases, id: \.self) { type in
                     Button {
-                        newInteractionType = type
-                        showingCreateInteraction = true
+                        InteractionCreationState.shared.person = person
+                        InteractionCreationState.shared.interactionType = type
+                        openWindow(id: "interaction-creation")
                     } label: {
                         VStack(spacing: 8) {
                             Text(type.emoji)
@@ -758,7 +957,7 @@ struct MacPersonRecordsTab: View {
 
         // 2. InteractionRecord 생성 (메모도 접촉 기록으로 간주)
         let interactionRecord = person.addInteractionRecord(
-            type: .contact,  // 스몰토크로 기록
+            type: .quickNote,  // 빠른 메모로 기록
             date: Date(),
             notes: "빠른 메모: \(trimmedMemo.prefix(100))",  // 처음 100자만 저장
             duration: nil,
@@ -1228,6 +1427,35 @@ struct MacInteractionRecordRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
+
+                // 첨부파일 표시
+                if record.hasAttachments {
+                    HStack(spacing: 8) {
+                        Image(systemName: "paperclip")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text("\(record.attachmentCount)개 첨부됨")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+
+                        // 첨부파일 타입별 아이콘
+                        if !record.imageAttachments.isEmpty {
+                            Image(systemName: "photo")
+                                .font(.caption2)
+                                .foregroundStyle(.blue)
+                        }
+                        if !record.audioAttachments.isEmpty {
+                            Image(systemName: "waveform")
+                                .font(.caption2)
+                                .foregroundStyle(.purple)
+                        }
+                        if !record.documentAttachments.isEmpty {
+                            Image(systemName: "doc")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
             }
         }
         .padding()
@@ -1253,6 +1481,8 @@ struct MacCreateInteractionSheet: View {
     @State private var date = Date()
     @State private var notes = ""
     @State private var location = ""
+    @State private var selectedFiles: [URL] = []
+    @State private var showingFilePicker = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1271,8 +1501,9 @@ struct MacCreateInteractionSheet: View {
 
             Divider()
 
-            // 폼
-            Form {
+            // 폼 (스크롤 가능)
+            ScrollView {
+                Form {
                 Section {
                     HStack {
                         Text(interactionType.emoji)
@@ -1300,8 +1531,78 @@ struct MacCreateInteractionSheet: View {
                     TextEditor(text: $notes)
                         .frame(minHeight: 100)
                 }
+
+                Section("첨부파일") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        // 드롭 영역
+                        VStack(spacing: 8) {
+                            if selectedFiles.isEmpty {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "arrow.down.doc.fill")
+                                        .font(.largeTitle)
+                                        .foregroundStyle(.secondary)
+                                    Text("파일을 여기로 드래그하거나 클릭하여 선택")
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 100)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [5]))
+                                        .foregroundStyle(.secondary.opacity(0.3))
+                                )
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    selectFiles()
+                                }
+                            } else {
+                                ForEach(selectedFiles, id: \.self) { url in
+                                    HStack {
+                                        Image(systemName: iconForFile(url))
+                                            .foregroundStyle(colorForFile(url))
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(url.lastPathComponent)
+                                                .font(.subheadline)
+                                            if let fileSize = fileSize(for: url) {
+                                                Text(fileSize)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+
+                                        Spacer()
+
+                                        Button {
+                                            selectedFiles.removeAll { $0 == url }
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.vertical, 4)
+                                }
+
+                                Button {
+                                    selectFiles()
+                                } label: {
+                                    Label("파일 추가", systemImage: "plus.circle.fill")
+                                }
+                            }
+                        }
+                        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                            handleDrop(providers: providers)
+                            return true
+                        }
+                    }
+                }
+                }
+                .formStyle(.grouped)
             }
-            .formStyle(.grouped)
+
+            Divider()
 
             // 저장 버튼
             HStack {
@@ -1314,14 +1615,13 @@ struct MacCreateInteractionSheet: View {
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
         }
-        .frame(minWidth: 500, minHeight: 600)
     }
 
     private func saveRecord() {
         let finalNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes
         let finalLocation = location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : location
 
-        _ = person.addInteractionRecord(
+        let record = person.addInteractionRecord(
             type: interactionType,
             date: date,
             notes: finalNotes,
@@ -1330,15 +1630,81 @@ struct MacCreateInteractionSheet: View {
             relatedMeetingRecord: nil
         )
 
+        // 첨부파일 추가
+        for fileURL in selectedFiles {
+            if let fileData = try? Data(contentsOf: fileURL) {
+                let fileType = AttachmentFileType.from(fileName: fileURL.lastPathComponent)
+                let attachment = AttachmentFile(
+                    fileName: fileURL.lastPathComponent,
+                    fileType: fileType,
+                    fileData: fileData
+                )
+                context.insert(attachment)
+                record.addAttachment(attachment)
+            }
+        }
+
         person.updateRelationshipState()
 
         do {
             try context.save()
-            print("✅ 새 상호작용 기록 생성")
+            print("✅ 새 상호작용 기록 생성 (첨부파일 \(selectedFiles.count)개)")
             dismiss()
         } catch {
             print("❌ 상호작용 기록 생성 실패: \(error)")
         }
+    }
+
+    private func selectFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.message = "첨부할 파일을 선택하세요"
+
+        panel.begin { response in
+            if response == .OK {
+                selectedFiles.append(contentsOf: panel.urls)
+            }
+        }
+    }
+
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, error in
+                if let url = url {
+                    DispatchQueue.main.async {
+                        // 이미 추가된 파일인지 확인
+                        if !selectedFiles.contains(url) {
+                            selectedFiles.append(url)
+                        }
+                    }
+                }
+            }
+        }
+        return true
+    }
+
+    private func iconForFile(_ url: URL) -> String {
+        let fileType = AttachmentFileType.from(fileName: url.lastPathComponent)
+        return fileType.icon
+    }
+
+    private func colorForFile(_ url: URL) -> Color {
+        let fileType = AttachmentFileType.from(fileName: url.lastPathComponent)
+        return fileType.color
+    }
+
+    private func fileSize(for url: URL) -> String? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? Int64 else {
+            return nil
+        }
+
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: size)
     }
 }
 
@@ -1787,6 +2153,14 @@ struct MacPersonAnalyticsTab: View {
                 Label("모든 데이터 삭제", systemImage: "trash.fill")
             }
             .buttonStyle(.bordered)
+
+            Button(role: .destructive) {
+                deletePerson()
+            } label: {
+                Label("사람 완전 삭제", systemImage: "person.fill.xmark")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
         }
         .padding()
         .background(Color.orange.opacity(0.1))
@@ -2045,6 +2419,23 @@ struct MacPersonAnalyticsTab: View {
         try? context.save()
         print("✅ 모든 데이터가 삭제되었습니다")
     }
+
+    private func deletePerson() {
+        let personName = person.name
+        context.delete(person)
+
+        do {
+            try context.save()
+            print("✅ \(personName) 완전 삭제됨")
+
+            // 윈도우 닫기
+            if let window = NSApplication.shared.keyWindow {
+                window.close()
+            }
+        } catch {
+            print("❌ 사람 삭제 실패: \(error)")
+        }
+    }
 }
 
 struct StatCard: View {
@@ -2241,6 +2632,172 @@ struct MacMemoArchiveRow: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.gray.opacity(0.2), lineWidth: 1)
         )
+    }
+}
+
+// MARK: - Badge Button Component
+struct MacBadgeButton: View {
+    let count: Int
+    let title: String
+    let color: Color
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                // 아이콘과 숫자
+                HStack(spacing: 4) {
+                    Image(systemName: icon)
+                        .font(.title3)
+                    Text("\(count)")
+                        .font(.title)
+                        .fontWeight(.bold)
+                }
+                .foregroundStyle(color)
+
+                // 제목
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(minWidth: 80)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(color.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(color.opacity(0.3), lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .help("탭하여 \(title) 보기") // 툴팁
+    }
+}
+
+// MARK: - Badge Details Popover
+struct BadgeDetailsPopover: View {
+    let person: Person
+    @Binding var selectedTab: Int
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // 헤더
+            HStack {
+                Image(systemName: "bell.badge.fill")
+                    .foregroundStyle(.red)
+                Text("알림 목록")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding()
+            .background(Color(NSColor.controlBackgroundColor))
+
+            Divider()
+
+            // 배지 목록
+            ScrollView {
+                VStack(spacing: 0) {
+                    let badgeDetails = person.getBadgeDetails()
+
+                    if badgeDetails.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 40))
+                                .foregroundStyle(.green)
+                            Text("모든 항목이 처리되었습니다")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
+                    } else {
+                        ForEach(Array(badgeDetails.enumerated()), id: \.offset) { index, detail in
+                            BadgeDetailRow(
+                                detail: detail,
+                                onTap: {
+                                    selectedTab = detail.tabIndex
+                                    dismiss()
+                                }
+                            )
+
+                            if index < badgeDetails.count - 1 {
+                                Divider()
+                                    .padding(.leading, 56)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 400)
+        }
+        .frame(width: 350)
+    }
+}
+
+struct BadgeDetailRow: View {
+    let detail: Person.BadgeDetail
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(alignment: .top, spacing: 12) {
+                // 아이콘과 숫자
+                ZStack {
+                    Circle()
+                        .fill(Color(detail.color).opacity(0.2))
+                        .frame(width: 40, height: 40)
+
+                    Text("\(detail.count)")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundStyle(Color(detail.color))
+                }
+
+                // 정보
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(detail.category)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+
+                    Text(detail.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.caption2)
+                        Text("탭하여 이동")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(Color(detail.color))
+                    .padding(.top, 2)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

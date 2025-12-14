@@ -12,15 +12,17 @@ import EventKit
 
 // 상세 뷰 탭 정의
 enum PersonDetailTab: Int, CaseIterable {
-    case activities = 0
-    case relationship = 1
-    case info = 2
-    
+    case records = 0
+    case timeline = 1
+    case activities = 2
+    case info = 3
+
     var title: String {
         switch self {
-        case .info: return "정보"
+        case .records: return "기록"
+        case .timeline: return "타임라인"
         case .activities: return "활동"
-        case .relationship: return "관계"
+        case .info: return "정보"
         }
     }
 }
@@ -113,12 +115,19 @@ struct PersonDetailView: View {
     
     var body: some View {
         Form {
+            // 배지 섹션 (항상 표시)
+            if person.hasBadges {
+                badgesSection
+            }
+
             // 선택된 탭에 따라 다른 내용 표시
             switch currentTab {
+            case .records:
+                recordsTabContent
+            case .timeline:
+                timelineTabContent
             case .activities:
-                activitiesTabContent  
-            case .relationship:
-                relationshipTabContent
+                activitiesTabContent
             case .info:
                 infoTabContent
             }
@@ -132,17 +141,23 @@ struct PersonDetailView: View {
                         Button {
                             selectedTab = 0
                         } label: {
-                            Label("활동", systemImage: "clock.arrow.circlepath")
+                            Label("기록", systemImage: "book")
                         }
 
                         Button {
                             selectedTab = 1
                         } label: {
-                            Label("관계", systemImage: "person.2")
+                            Label("타임라인", systemImage: "clock.arrow.circlepath")
                         }
 
                         Button {
                             selectedTab = 2
+                        } label: {
+                            Label("활동", systemImage: "checklist")
+                        }
+
+                        Button {
+                            selectedTab = 3
                         } label: {
                             Label("정보", systemImage: "info.circle")
                         }
@@ -156,9 +171,10 @@ struct PersonDetailView: View {
                     }
                 } else {
                     Picker("", selection: $selectedTab) {
-                        Text("활동").tag(0)
-                        Text("관계").tag(1)
-                        Text("정보").tag(2)
+                        Text("기록").tag(0)
+                        Text("타임라인").tag(1)
+                        Text("활동").tag(2)
+                        Text("정보").tag(3)
                     }
                     .pickerStyle(.segmented)
                 }
@@ -261,12 +277,63 @@ struct PersonDetailView: View {
         }
     }
     
+    // MARK: - Badge Section
+    @ViewBuilder
+    private var badgesSection: some View {
+        Section {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    // 크리티컬 액션 배지
+                    if person.criticalActionsCount > 0 {
+                        BadgeCard(
+                            count: person.criticalActionsCount,
+                            title: "긴급 액션",
+                            color: .red,
+                            icon: "exclamationmark.circle.fill"
+                        ) {
+                            selectedTab = 0 // 활동 탭으로 이동
+                        }
+                    }
+
+                    // 미완료 액션 배지
+                    if person.incompleteActionsCount > 0 {
+                        BadgeCard(
+                            count: person.incompleteActionsCount,
+                            title: "미완료 액션",
+                            color: .blue,
+                            icon: "checkmark.circle"
+                        ) {
+                            selectedTab = 0 // 활동 탭으로 이동
+                        }
+                    }
+
+                    // 중요 항목 배지
+                    if person.importantItemsCount > 0 {
+                        BadgeCard(
+                            count: person.importantItemsCount,
+                            title: "중요 항목",
+                            color: .yellow,
+                            icon: "star.fill"
+                        ) {
+                            selectedTab = 1 // 타임라인 탭으로 이동
+                        }
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+        } header: {
+            HStack {
+                Image(systemName: "bell.badge.fill")
+                    .foregroundStyle(.red)
+                Text("주의가 필요한 항목")
+                    .font(.headline)
+            }
+        }
+    }
+
     // MARK: - Tab Content Views
     @ViewBuilder
     private var activitiesTabContent: some View {
-        // 상호작용 섹션
-        recentInteractionsSection
-
         // 캘린더 일정 섹션
         calendarEventsSection
 
@@ -275,15 +342,28 @@ struct PersonDetailView: View {
 
         // 놓치면 안되는 것들
         criticalActionsSection
-    }
-    
-    @ViewBuilder
-    private var relationshipTabContent: some View {
+
         // 관계 상태
         relationshipStatusSection
-        
-        // 대화/상태
-        conversationStateSection
+    }
+
+    @ViewBuilder
+    private var timelineTabContent: some View {
+        Section {
+            PersonTimelineView(person: person)
+                .frame(height: 600)
+        }
+    }
+
+    @ViewBuilder
+    private var recordsTabContent: some View {
+        // 상호작용 기록
+        recentInteractionsSection
+
+        // 대화 기록 (고민/질문/약속)
+        Section("대화 기록") {
+            ConversationRecordsView(person: person)
+        }
     }
     
     @ViewBuilder
@@ -1485,5 +1565,48 @@ struct UpcomingEventRow: View {
                         .strokeBorder(Color.blue.opacity(0.3), lineWidth: 1)
                 )
         )
+    }
+}
+
+// MARK: - Badge Card Component
+struct BadgeCard: View {
+    let count: Int
+    let title: String
+    let color: Color
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                // 아이콘과 숫자
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.title2)
+                    Text("\(count)")
+                        .font(.title)
+                        .fontWeight(.bold)
+                }
+                .foregroundStyle(color)
+
+                // 제목
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(minWidth: 100)
+            .padding(.vertical, 16)
+            .padding(.horizontal, 20)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(color.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(color.opacity(0.4), lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }

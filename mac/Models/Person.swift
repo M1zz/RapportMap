@@ -453,7 +453,7 @@ extension Person {
             if let notes = notes {
                 mealNotes = notes
             }
-        case .contact, .call, .message:
+        case .contact, .call, .message, .quickNote:
             lastContact = date
             if let notes = notes {
                 contactNotes = notes
@@ -1331,6 +1331,218 @@ struct RelationshipAnalysis {
     let recommendations: [String]               // 관계 개선을 위한 추천사항들
 }
 
+// MARK: - Timeline Support
+extension Person {
+    /// 모든 타임라인 아이템 가져오기 (필터링 및 중요도 옵션 포함)
+    /// - Parameters:
+    ///   - filter: 표시할 기록 타입 (기본값: 전체)
+    ///   - importantOnly: true면 중요 표시된 항목만 (기본값: false)
+    /// - Returns: 날짜 내림차순으로 정렬된 타임라인 아이템 배열
+    func getAllTimelineItems(filter: TimelineFilter = .all, importantOnly: Bool = false) -> [TimelineItem] {
+        var items: [TimelineItem] = []
+
+        // 1. 상호작용 기록
+        if filter.includes(.interaction) {
+            let interactions = getAllInteractionRecordsSorted()
+                .filter { !importantOnly || $0.isImportant }
+                .map { TimelineItem(type: .interaction($0)) }
+            items.append(contentsOf: interactions)
+        }
+
+        // 2. 미팅 기록
+        if filter.includes(.meeting) {
+            let meetings = meetingRecords
+                .filter { !importantOnly || $0.isImportant }
+                .sorted { $0.date > $1.date }
+                .map { TimelineItem(type: .meeting($0)) }
+            items.append(contentsOf: meetings)
+        }
+
+        // 3. 대화 기록
+        if filter.includes(.conversation) {
+            let conversations = getAllConversationRecordsSorted()
+                .filter { !importantOnly || $0.isImportant }
+                .map { TimelineItem(type: .conversation($0)) }
+            items.append(contentsOf: conversations)
+        }
+
+        // 4. 빠른 메모 아카이브
+        if filter.includes(.memo) {
+            let memos = archivedMemos
+                .sorted { $0.createdDate > $1.createdDate }
+                .map { TimelineItem(type: .memo($0)) }
+            items.append(contentsOf: memos)
+        }
+
+        // 5. 액션 아이템 (날짜가 있는 것만)
+        if filter.includes(.action) {
+            let actions = actions
+                .filter { action in
+                    let hasDate = action.completedDate != nil ||
+                                  action.lastActionDate != nil ||
+                                  action.reminderDate != nil
+                    let matchesImportant = !importantOnly || action.action?.type == .critical
+                    return hasDate && matchesImportant
+                }
+                .sorted {
+                    let date1 = $0.completedDate ?? $0.lastActionDate ?? $0.reminderDate ?? Date.distantPast
+                    let date2 = $1.completedDate ?? $1.lastActionDate ?? $1.reminderDate ?? Date.distantPast
+                    return date1 > date2
+                }
+                .map { TimelineItem(type: .action($0)) }
+            items.append(contentsOf: actions)
+        }
+
+        // 전체 아이템을 날짜 내림차순으로 정렬 (최신 우선)
+        return items.sorted { $0.date > $1.date }
+    }
+
+    /// 날짜별로 그룹화된 타임라인 아이템 가져오기
+    /// - Parameters:
+    ///   - filter: 표시할 기록 타입 (기본값: 전체)
+    ///   - importantOnly: true면 중요 표시된 항목만 (기본값: false)
+    /// - Returns: 날짜 그룹별로 정리된 GroupedTimelineItems 배열
+    func getGroupedTimelineItems(filter: TimelineFilter = .all, importantOnly: Bool = false) -> [GroupedTimelineItems] {
+        return getAllTimelineItems(filter: filter, importantOnly: importantOnly)
+            .groupedByDate()
+    }
+}
+
+/// 타임라인 필터 옵션
+struct TimelineFilter: OptionSet {
+    let rawValue: Int
+
+    static let interaction = TimelineFilter(rawValue: 1 << 0)
+    static let meeting = TimelineFilter(rawValue: 1 << 1)
+    static let conversation = TimelineFilter(rawValue: 1 << 2)
+    static let memo = TimelineFilter(rawValue: 1 << 3)
+    static let action = TimelineFilter(rawValue: 1 << 4)
+
+    static let all: TimelineFilter = [.interaction, .meeting, .conversation, .memo, .action]
+
+    /// 특정 필터가 포함되어 있는지 확인
+    func includes(_ filter: TimelineFilter) -> Bool {
+        return self.contains(filter)
+    }
+
+    /// 필터 표시 이름
+    var displayName: String {
+        if self == .all { return "전체" }
+        if self == .interaction { return "상호작용" }
+        if self == .meeting { return "미팅" }
+        if self == .conversation { return "대화" }
+        if self == .memo { return "메모" }
+        if self == .action { return "액션" }
+        return "필터"
+    }
+}
+
+// MARK: - Badge Support
+extension Person {
+    /// 미완료 액션 개수
+    var incompleteActionsCount: Int {
+        return actions.filter { $0.completedDate == nil }.count
+    }
+
+    /// 중요 표시된 아이템 개수 (모든 기록 타입 포함)
+    var importantItemsCount: Int {
+        var count = 0
+
+        // 상호작용 기록
+        count += getAllInteractionRecordsSorted().filter { $0.isImportant }.count
+
+        // 미팅 기록
+        count += meetingRecords.filter { $0.isImportant }.count
+
+        // 대화 기록
+        count += conversationRecords.filter { $0.isImportant }.count
+
+        return count
+    }
+
+    /// 크리티컬 액션 개수 (미완료만)
+    var criticalActionsCount: Int {
+        return actions.filter {
+            $0.completedDate == nil && $0.action?.type == .critical
+        }.count
+    }
+
+    /// 총 배지 카운트 (표시할 알림 개수)
+    var totalBadgeCount: Int {
+        return incompleteActionsCount + importantItemsCount
+    }
+
+    /// 배지가 있는지 여부
+    var hasBadges: Bool {
+        return totalBadgeCount > 0
+    }
+
+    /// 타임라인 탭 뱃지 카운트 (중요 항목)
+    var timelineBadgeCount: Int {
+        return importantItemsCount
+    }
+
+    /// 활동 탭 뱃지 카운트 (미완료 액션)
+    var actionsBadgeCount: Int {
+        return incompleteActionsCount
+    }
+
+    /// 캘린더 탭 뱃지 카운트 (다가오는 이벤트는 외부에서 계산)
+    var calendarBadgeCount: Int {
+        // 캘린더 이벤트는 CalendarManager에서 관리하므로 여기서는 0
+        // MacPersonCalendarTab에서 직접 계산
+        return 0
+    }
+
+    /// 뱃지 상세 정보 (알림 버튼용)
+    struct BadgeDetail {
+        let category: String
+        let count: Int
+        let description: String
+        let tabIndex: Int
+        let color: NSColor
+    }
+
+    /// 모든 뱃지 상세 정보 가져오기
+    func getBadgeDetails() -> [BadgeDetail] {
+        var details: [BadgeDetail] = []
+
+        // 크리티컬 액션
+        if criticalActionsCount > 0 {
+            details.append(BadgeDetail(
+                category: "긴급 액션",
+                count: criticalActionsCount,
+                description: "즉시 처리가 필요한 긴급 액션",
+                tabIndex: 3,
+                color: .systemRed
+            ))
+        }
+
+        // 미완료 액션
+        if incompleteActionsCount > 0 {
+            details.append(BadgeDetail(
+                category: "미완료 액션",
+                count: incompleteActionsCount,
+                description: "아직 완료하지 않은 액션",
+                tabIndex: 3,
+                color: .systemBlue
+            ))
+        }
+
+        // 중요 항목
+        if importantItemsCount > 0 {
+            details.append(BadgeDetail(
+                category: "중요 항목",
+                count: importantItemsCount,
+                description: "중요 표시된 상호작용, 미팅, 대화",
+                tabIndex: 2,
+                color: .systemYellow
+            ))
+        }
+
+        return details
+    }
+}
 
 // MARK: - Notification Names
 extension NSNotification.Name {

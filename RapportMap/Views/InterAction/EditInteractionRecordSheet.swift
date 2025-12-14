@@ -35,7 +35,7 @@ struct EditInteractionRecordSheet: View {
             matchingMeetingType = .mentoring
         case .meal:
             matchingMeetingType = .meal
-        case .contact, .call, .message:
+        case .contact, .call, .message, .quickNote:
             // 스몰토크는 일반 대화나 커피 미팅과 연결
             return person.meetingRecords
                 .filter { [.general, .coffee].contains($0.meetingType) }
@@ -480,8 +480,8 @@ struct EditInteractionRecordSheet: View {
         } else {
             // photosData 배열에서 삭제 (레거시 photoData가 있으면 인덱스 조정)
             let adjustedIndex = record.photoData != nil ? index - 1 : index
-            if adjustedIndex >= 0 && adjustedIndex < record.photosData.count {
-                record.photosData.remove(at: adjustedIndex)
+            if adjustedIndex >= 0 && adjustedIndex < (record.photosData?.count ?? 0) {
+                record.photosData?.remove(at: adjustedIndex)
             }
         }
     }
@@ -503,7 +503,7 @@ struct EditInteractionRecordSheet: View {
             case .meal:
                 person.lastMeal = record.date
                 person.mealNotes = record.notes
-            case .contact, .call, .message:
+            case .contact, .call, .message, .quickNote:
                 person.lastContact = record.date
                 person.contactNotes = record.notes
             case .meeting:
@@ -533,7 +533,7 @@ struct EditInteractionRecordSheet: View {
             return "멘토링"
         case .meal:
             return "식사"
-        case .contact, .call, .message:
+        case .contact, .call, .message, .quickNote:
             return "대화"
         case .meeting:
             return "만남"
@@ -554,7 +554,7 @@ struct RecordPickerView: View {
             return "멘토링 녹음 연결"
         case .meal:
             return "식사 녹음 연결"
-        case .contact, .call, .message:
+        case .contact, .call, .message, .quickNote:
             return "대화 녹음 연결"
         case .meeting:
             return "만남 녹음 연결"
@@ -567,7 +567,7 @@ struct RecordPickerView: View {
             return "이 멘토링과 연관된 녹음 파일을 선택하세요"
         case .meal:
             return "이 식사와 연관된 녹음 파일을 선택하세요"
-        case .contact, .call, .message:
+        case .contact, .call, .message, .quickNote:
             return "이 연락/대화와 연관된 녹음 파일을 선택하세요"
         case .meeting:
             return "이 만남과 연관된 녹음 파일을 선택하세요"
@@ -580,7 +580,7 @@ struct RecordPickerView: View {
             return "멘토링 녹음 파일이 없습니다"
         case .meal:
             return "식사 관련 녹음 파일이 없습니다"
-        case .contact, .call, .message:
+        case .contact, .call, .message, .quickNote:
             return "대화 관련 녹음 파일이 없습니다"
         case .meeting:
             return "만남 관련 녹음 파일이 없습니다"

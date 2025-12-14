@@ -43,7 +43,7 @@ final class PersonAction {
         context: String = "",
         reminderDate: Date? = nil,
         isReminderActive: Bool = false,
-        isVisibleInDetail: Bool = false
+        isVisibleInDetail: Bool = true  // 기본적으로 표시
     ) {
         self.id = id
         self.person = person

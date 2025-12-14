@@ -241,25 +241,120 @@ class DataSeeder {
             print("✅ PersonContext 마이그레이션이 이미 완료되었습니다")
             return
         }
-        
+
         print("🔄 PersonContext 마이그레이션 시작...")
-        
+
         do {
             let allPeople = try context.fetch(FetchDescriptor<Person>())
             var migrationCount = 0
-            
+
             for person in allPeople {
                 person.migrateStringFieldsToContexts(modelContext: context)
                 migrationCount += 1
             }
-            
+
             try context.save()
-            
+
             UserDefaults.standard.set(true, forKey: migrationKey)
             print("✅ PersonContext 마이그레이션 완료: \(migrationCount)명 처리됨")
-            
+
         } catch {
             print("❌ PersonContext 마이그레이션 실패: \(error)")
+        }
+    }
+
+    /// 테스트용 더미 데이터 생성
+    static func seedDummyData(context: ModelContext) {
+        print("🎲 더미 데이터 생성 시작...")
+
+        // 기본 액션 먼저 확인
+        seedDefaultActionsIfNeeded(context: context)
+
+        do {
+            let allActions = try context.fetch(FetchDescriptor<RapportAction>())
+
+            // 샘플 사람 3명 생성
+            let samplePeople = [
+                ("김민준", "010-1234-5678", ["개발", "게임", "운동"]),
+                ("이서연", "010-2345-6789", ["디자인", "요리", "여행"]),
+                ("박지훈", "010-3456-7890", ["기획", "독서", "영화"])
+            ]
+
+            for (name, contact, interests) in samplePeople {
+                let person = Person(name: name, contact: contact)
+                person.interests = interests.joined(separator: ", ")
+                person.relationshipStartDate = Calendar.current.date(byAdding: .month, value: -Int.random(in: 3...12), to: Date()) ?? Date()
+                context.insert(person)
+
+                // PersonAction들 생성 (일부만 visible)
+                for action in allActions.prefix(10) {
+                    let personAction = PersonAction(
+                        person: person,
+                        action: action,
+                        isVisibleInDetail: Int.random(in: 0...2) == 0 // 33% 확률로 visible
+                    )
+
+                    // 일부는 완료 처리
+                    if Bool.random() {
+                        personAction.completedDate = Calendar.current.date(byAdding: .day, value: -Int.random(in: 1...30), to: Date())
+                        personAction.note = "완료했습니다"
+                    }
+
+                    context.insert(personAction)
+                }
+
+                // 상호작용 기록 3-5개
+                for i in 0..<Int.random(in: 3...5) {
+                    let interaction = InteractionRecord(
+                        date: Calendar.current.date(byAdding: .day, value: -i * 7, to: Date()) ?? Date(),
+                        type: [InteractionType.meeting, .meal, .call, .contact, .message].randomElement()!,
+                        notes: "샘플 상호작용 기록 #\(i+1)",
+                        isImportant: Bool.random()
+                    )
+                    interaction.person = person
+                    context.insert(interaction)
+                }
+
+                // 미팅 기록 2-3개
+                for i in 0..<Int.random(in: 2...3) {
+                    let meeting = MeetingRecord(
+                        date: Calendar.current.date(byAdding: .day, value: -i * 10, to: Date()) ?? Date(),
+                        meetingType: [MeetingType.oneOnOne, .mentoring, .coffee, .general, .meal].randomElement()!,
+                        summary: "샘플 미팅 #\(i+1): 미팅 요약",
+                        isImportant: Bool.random()
+                    )
+                    meeting.person = person
+                    context.insert(meeting)
+                }
+
+                // 대화 기록 2-4개
+                for i in 0..<Int.random(in: 2...4) {
+                    let conversation = ConversationRecord(
+                        date: Calendar.current.date(byAdding: .day, value: -i * 5, to: Date()) ?? Date(),
+                        type: [ConversationType.question, .concern, .promise, .update, .feedback, .achievement].randomElement()!,
+                        content: "샘플 대화 내용 #\(i+1): 주요 내용 포인트",
+                        isImportant: Bool.random()
+                    )
+                    conversation.person = person
+                    context.insert(conversation)
+                }
+
+                // 빠른 메모 1-2개
+                for i in 0..<Int.random(in: 1...2) {
+                    let memo = QuickMemoArchive(
+                        content: "샘플 빠른 메모 #\(i+1): 기억해둘 내용",
+                        createdDate: Calendar.current.date(byAdding: .day, value: -i * 3, to: Date()) ?? Date()
+                    )
+                    memo.person = person
+                    context.insert(memo)
+                }
+            }
+
+            try context.save()
+            print("✅ 더미 데이터 생성 완료: \(samplePeople.count)명의 사람과 관련 기록들")
+
+        } catch {
+            print("❌ 더미 데이터 생성 실패: \(error)")
         }
     }
 }

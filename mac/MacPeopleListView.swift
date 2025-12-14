@@ -270,9 +270,8 @@ struct MacPersonRow: View {
             Spacer()
 
             // 미완료 액션 개수
-            let incompleteCount = person.actions.filter { !$0.isCompleted }.count
-            if incompleteCount > 0 {
-                Text("\(incompleteCount)")
+            if person.incompleteActionsCount > 0 {
+                Text("\(person.incompleteActionsCount)")
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundStyle(.white)

@@ -22,7 +22,8 @@ struct macApp: App {
             InteractionRecord.self,
             ConversationRecord.self,
             NotificationHistory.self,
-            QuickMemoArchive.self
+            QuickMemoArchive.self,
+            AttachmentFile.self
         ])
 
         // CloudKit 통합 비활성화, 기본 경로 사용
@@ -53,5 +54,43 @@ struct macApp: App {
             ContentView()
         }
         .modelContainer(macApp.sharedModelContainer)
+
+        WindowGroup(id: "interaction-creation") {
+            InteractionCreationWindowView()
+        }
+        .modelContainer(macApp.sharedModelContainer)
+        .defaultSize(width: 600, height: 700)
+    }
+}
+
+// 상호작용 기록 생성 윈도우를 위한 환경 객체
+@Observable
+class InteractionCreationState {
+    static let shared = InteractionCreationState()
+    var person: Person?
+    var interactionType: InteractionType?
+}
+
+struct InteractionCreationWindowView: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @State private var state = InteractionCreationState.shared
+
+    var body: some View {
+        Group {
+            if let person = state.person, let type = state.interactionType {
+                MacCreateInteractionSheet(
+                    person: person,
+                    interactionType: type,
+                    context: context
+                )
+            } else {
+                VStack {
+                    Text("상호작용 정보가 없습니다")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
     }
 }

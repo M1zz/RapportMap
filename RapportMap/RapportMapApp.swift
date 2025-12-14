@@ -23,7 +23,8 @@ struct RapportMapApp: App {
             InteractionRecord.self,
             ConversationRecord.self,
             NotificationHistory.self,
-            QuickMemoArchive.self
+            QuickMemoArchive.self,
+            AttachmentFile.self
         ])
 
         // CloudKit 통합 비활성화, 기본 경로 사용

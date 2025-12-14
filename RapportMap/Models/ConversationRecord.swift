@@ -17,7 +17,9 @@ final class ConversationRecord {
     var isResolved: Bool                // 해결 여부 (질문 답변, 약속 이행 등)
     var isImportant: Bool               // 중요한 기록 여부 (놓치면 안되는 것들에 표시)
     var priority: ConversationPriority  // 우선순위
-    var tags: [String]                  // 태그들 (검색이나 분류용)
+
+    @Attribute
+    var tags: [String] = []             // 태그들 (검색이나 분류용)
 
     /// 첨부된 이미지 데이터 (여러 장 가능)
     @Attribute(.externalStorage)

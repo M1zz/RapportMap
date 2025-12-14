@@ -413,7 +413,7 @@ struct MacSettingsView: View {
     // MARK: - Debug Methods
 
     private func generateAllDummyData() {
-        generateDummyPeople()
+        DataSeeder.seedDummyData(context: context)
         generateDummyMentoringSessions()
 
         successMessage = "모든 더미 데이터가 생성되었습니다"
@@ -421,58 +421,10 @@ struct MacSettingsView: View {
     }
 
     private func generateDummyPeople() {
-        let names = ["김철수", "이영희", "박민수", "최지연", "정태영"]
-        let meetingTypes: [MeetingType] = [.oneOnOne, .mentoring, .coffee, .general, .meal]
-        let conversationTypes: [ConversationType] = [.question, .concern, .promise, .update, .feedback, .achievement]
-        let conversationPriorities: [ConversationPriority] = [.low, .normal, .high, .urgent]
+        DataSeeder.seedDummyData(context: context)
 
-        for i in 0..<5 {
-            let person = Person(
-                name: names[i],
-                contact: "010-\(1000 + i * 1111)-\(2000 + i * 222)",
-                background: "더미 데이터로 생성된 사람입니다. 테스트용 배경 정보."
-            )
-
-            // 미팅 기록 추가 (각 사람당 5개)
-            for j in 0..<5 {
-                let meeting = MeetingRecord(
-                    date: Date().addingTimeInterval(-Double(j * 7) * 24 * 3600),
-                    meetingType: meetingTypes.randomElement() ?? .oneOnOne,
-                    summary: "더미 미팅 내용 \(j + 1)",
-                    duration: Double.random(in: 1800...7200)
-                )
-                meeting.person = person
-                context.insert(meeting)
-            }
-
-            // 대화 기록 추가 (각 사람당 10개)
-            for j in 0..<10 {
-                let record = person.addConversationRecord(
-                    type: conversationTypes.randomElement() ?? .question,
-                    content: "더미 대화 내용 \(j + 1): 테스트 데이터입니다.",
-                    priority: conversationPriorities.randomElement() ?? .normal,
-                    isImportant: Bool.random(),
-                    date: Date().addingTimeInterval(-Double(j * 3) * 24 * 3600)
-                )
-                context.insert(record)
-            }
-
-            // 액션 추가 (각 사람당 5개)
-            for j in 0..<5 {
-                let action = PersonAction(
-                    isCompleted: j % 2 == 0,
-                    note: "더미 액션 노트 \(j + 1)",
-                    context: "테스트용 컨텍스트입니다."
-                )
-                action.person = person
-                context.insert(action)
-            }
-
-            context.insert(person)
-        }
-
-        try? context.save()
-        print("✅ 5명의 더미 사람 데이터 생성됨 (각각 미팅 5개, 대화 10개, 액션 5개)")
+        successMessage = "더미 사람 데이터가 생성되었습니다"
+        showingSuccess = true
     }
 
     private func generateDummyMentoringSessions() {

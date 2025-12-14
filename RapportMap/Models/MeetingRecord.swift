@@ -24,10 +24,19 @@ final class MeetingRecord {
     var transcriptionText: String?  // STT 결과 텍스트 (복사-붙여넣기)
     var diarizedText: String?  // 화자 분리된 텍스트 (복사-붙여넣기)
     var extractedData: String?  // Claude에서 추출한 결과 (복사-붙여넣기)
+
+    @Attribute
     var mentorPromises: [String] = []  // 멘토가 한 약속들
+
+    @Attribute
     var menteePromises: [String] = []  // 멘티가 한 약속들
+
+    @Attribute
     var actionItems: [String] = []  // 액션 아이템들
+
+    @Attribute
     var scheduledEvents: [String] = []  // 일정들
+
     var workflowCompletedDate: Date?  // 워크플로우 완료 날짜
 
     // 관계
