@@ -270,6 +270,24 @@ struct MacPersonInfoTab: View {
                                 .frame(minHeight: 100)
                                 .font(.body)
                         }
+
+                        // 알게 된 정보
+                        if !getCompletedTrackingActions().isEmpty {
+                            Section("📝 알게 된 정보") {
+                                ForEach(getCompletedTrackingActions(), id: \.id) { personAction in
+                                    if let action = personAction.action, !personAction.context.isEmpty {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(action.title)
+                                                .font(.headline)
+                                            Text(personAction.context)
+                                                .font(.body)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding(.vertical, 4)
+                                    }
+                                }
+                            }
+                        }
                     }
                     .formStyle(.grouped)
                     .padding()
@@ -312,6 +330,14 @@ struct MacPersonInfoTab: View {
             }
         } message: {
             Text("\(person.name)님을 완전히 삭제하시겠습니까?\n\n모든 상호작용, 미팅, 대화, 메모, 액션이 함께 삭제되며 복구할 수 없습니다.")
+        }
+    }
+
+    private func getCompletedTrackingActions() -> [PersonAction] {
+        return person.actions.filter { action in
+            action.completedDate != nil &&
+            action.action?.type == .tracking &&
+            !action.context.isEmpty
         }
     }
 
@@ -878,9 +904,29 @@ struct MacPersonRecordsTab: View {
     @ViewBuilder
     private var recordingButtonsSection: some View {
         VStack(spacing: 12) {
-            Text("상호작용 기록하기")
-                .font(.headline)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack {
+                Text("상호작용 기록하기")
+                    .font(.headline)
+
+                Spacer()
+
+                // 음성 녹음 버튼
+                Button {
+                    NSSound.beep() // 임시로 소리만 재생
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "mic.fill")
+                        Text("음성 녹음")
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.red.opacity(0.1))
+                    .foregroundStyle(.red)
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+                .help("음성 녹음 기능 (준비 중)")
+            }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 12) {
                 ForEach(InteractionType.allCases, id: \.self) { type in

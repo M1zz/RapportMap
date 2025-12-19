@@ -611,12 +611,9 @@ struct AddConversationRecordSheet: View {
                 
                 Section("우선순위") {
                     Picker("우선순위", selection: $priority) {
-                        ForEach(ConversationPriority.allCases, id: \.self) { priority in
-                            HStack {
-                                Text(priority.emoji)
-                                Text(priority.title)
-                            }
-                            .tag(priority)
+                        ForEach(ConversationPriority.allCases, id: \.self) { p in
+                            Text("\(p.emoji) \(p.title)")
+                                .tag(p)
                         }
                     }
                     .pickerStyle(.segmented)

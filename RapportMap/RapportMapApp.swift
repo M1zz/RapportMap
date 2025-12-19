@@ -111,11 +111,11 @@ struct AppRootView: View {
                 }
                 
             case .showingPeopleList:
-                // iPad와 iPhone에 따라 다른 UI
+                // iPad와 iPhone 모두 PeopleListView 표시
                 if UIDevice.current.userInterfaceIdiom == .pad {
                     iPadMainView()
                 } else {
-                    MainTabView()
+                    PeopleListView()
                 }
             }
         }

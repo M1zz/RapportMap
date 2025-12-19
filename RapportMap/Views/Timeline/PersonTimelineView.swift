@@ -8,12 +8,37 @@
 import SwiftUI
 import SwiftData
 
+/// 타임라인 필터 옵션 (Picker용)
+enum TimelineFilterOption: String, CaseIterable, Hashable {
+    case all = "전체"
+    case interaction = "상호작용"
+    case meeting = "미팅"
+    case conversation = "대화"
+    case memo = "메모"
+    case action = "액션"
+
+    var filter: TimelineFilter {
+        switch self {
+        case .all: return .all
+        case .interaction: return .interaction
+        case .meeting: return .meeting
+        case .conversation: return .conversation
+        case .memo: return .memo
+        case .action: return .action
+        }
+    }
+}
+
 /// 특정 사람의 모든 기록을 시간순으로 보여주는 타임라인 뷰
 struct PersonTimelineView: View {
     @Bindable var person: Person
-    @State private var selectedFilter: TimelineFilter = .all
+    @State private var selectedFilterOption: TimelineFilterOption = .all
     @State private var showImportantOnly = false
     @State private var selectedItem: TimelineItem?
+
+    private var selectedFilter: TimelineFilter {
+        selectedFilterOption.filter
+    }
 
     private var groupedItems: [GroupedTimelineItems] {
         person.getGroupedTimelineItems(filter: selectedFilter, importantOnly: showImportantOnly)
@@ -27,8 +52,6 @@ struct PersonTimelineView: View {
         VStack(spacing: 0) {
             // 필터 툴바
             filterToolbar
-
-            Divider()
 
             // 타임라인 내용
             if groupedItems.isEmpty {
@@ -49,87 +72,79 @@ struct PersonTimelineView: View {
 
     @ViewBuilder
     private var filterToolbar: some View {
-        VStack(spacing: 12) {
-            // 필터 버튼들
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    FilterChip(
-                        title: "전체",
-                        icon: "list.bullet",
-                        isSelected: selectedFilter == .all,
-                        color: .gray
-                    ) {
-                        selectedFilter = .all
+        VStack(spacing: 0) {
+            // 필터 Picker (세그먼트 스타일)
+            VStack(spacing: 8) {
+                Picker("필터", selection: $selectedFilterOption) {
+                    ForEach(TimelineFilterOption.allCases, id: \.self) { option in
+                        Text(option.rawValue).tag(option)
                     }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
 
-                    FilterChip(
-                        title: "상호작용",
-                        icon: "bubble.left",
-                        isSelected: selectedFilter == .interaction,
-                        color: .blue
-                    ) {
-                        selectedFilter = .interaction
+                // 중요한 것만 토글 + 총 개수
+                HStack {
+                    Toggle(isOn: $showImportantOnly) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .font(.caption)
+                            Text("중요")
+                                .font(.subheadline)
+                        }
                     }
+                    .toggleStyle(.button)
+                    .buttonStyle(.borderedProminent)
+                    .tint(showImportantOnly ? .yellow : .gray)
+                    .controlSize(.small)
 
-                    FilterChip(
-                        title: "미팅",
-                        icon: "waveform.circle",
-                        isSelected: selectedFilter == .meeting,
-                        color: .purple
-                    ) {
-                        selectedFilter = .meeting
-                    }
+                    Spacer()
 
-                    FilterChip(
-                        title: "대화",
-                        icon: "message",
-                        isSelected: selectedFilter == .conversation,
-                        color: .green
-                    ) {
-                        selectedFilter = .conversation
+                    HStack(spacing: 4) {
+                        Image(systemName: filterIcon)
+                            .font(.caption)
+                            .foregroundStyle(filterColor)
+                        Text("\(totalCount)개")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundStyle(filterColor)
                     }
-
-                    FilterChip(
-                        title: "메모",
-                        icon: "note.text",
-                        isSelected: selectedFilter == .memo,
-                        color: .yellow
-                    ) {
-                        selectedFilter = .memo
-                    }
-
-                    FilterChip(
-                        title: "액션",
-                        icon: "checkmark.circle",
-                        isSelected: selectedFilter == .action,
-                        color: .red
-                    ) {
-                        selectedFilter = .action
-                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(filterColor.opacity(0.15))
+                    )
                 }
                 .padding(.horizontal)
             }
+            .padding(.vertical, 12)
+            .background(Color(.systemGroupedBackground))
 
-            // 중요한 것만 토글 + 총 개수
-            HStack {
-                Toggle(isOn: $showImportantOnly) {
-                    Label("중요한 것만", systemImage: "star.fill")
-                        .font(.subheadline)
-                }
-                .toggleStyle(.button)
-                .buttonStyle(.bordered)
-                .tint(.yellow)
-
-                Spacer()
-
-                Text("\(totalCount)개 항목")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal)
+            Divider()
         }
-        .padding(.vertical, 12)
-        .background(Color(.systemGroupedBackground))
+    }
+
+    private var filterIcon: String {
+        switch selectedFilterOption {
+        case .all: return "list.bullet"
+        case .interaction: return "bubble.left.fill"
+        case .meeting: return "waveform.circle.fill"
+        case .conversation: return "message.fill"
+        case .memo: return "note.text"
+        case .action: return "checkmark.circle.fill"
+        }
+    }
+
+    private var filterColor: Color {
+        switch selectedFilterOption {
+        case .all: return .primary
+        case .interaction: return .blue
+        case .meeting: return .purple
+        case .conversation: return .green
+        case .memo: return .orange
+        case .action: return .red
+        }
     }
 
     @ViewBuilder

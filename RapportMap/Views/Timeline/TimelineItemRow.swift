@@ -41,7 +41,12 @@ struct TimelineItemRow: View {
                 // 카테고리 뱃지
                 categoryBadge
             }
-            .padding(.bottom, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
         }
         .padding(.vertical, 4) // 위아래 추가 탭 영역
         .contentShape(Rectangle()) // 전체 영역을 탭 가능하게
@@ -54,39 +59,40 @@ struct TimelineItemRow: View {
         VStack(spacing: 0) {
             Circle()
                 .fill(item.type.color)
-                .frame(width: 12, height: 12)
+                .frame(width: 14, height: 14)
                 .overlay(
                     Circle()
-                        .stroke(item.type.color.opacity(0.3), lineWidth: 2)
-                        .frame(width: 18, height: 18)
+                        .stroke(item.type.color.opacity(0.5), lineWidth: 3)
+                        .frame(width: 22, height: 22)
                 )
 
             if !isLast {
                 Rectangle()
-                    .fill(item.type.color.opacity(0.2))
-                    .frame(width: 2)
+                    .fill(item.type.color.opacity(0.3))
+                    .frame(width: 3)
                     .frame(maxHeight: .infinity)
             }
         }
-        .frame(width: 20)
+        .frame(width: 24)
         .padding(.top, 4)
     }
 
     @ViewBuilder
     private var header: some View {
-        HStack {
+        HStack(spacing: 6) {
             Image(systemName: item.type.icon)
-                .font(.subheadline)
+                .font(.body)
+                .fontWeight(.semibold)
                 .foregroundStyle(item.type.color)
 
             Text(item.type.title)
-                .font(.subheadline)
-                .fontWeight(.semibold)
+                .font(.body)
+                .fontWeight(.bold)
                 .foregroundStyle(item.type.color)
 
             if item.type.isImportant {
                 Image(systemName: "star.fill")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.yellow)
             }
 
@@ -95,6 +101,7 @@ struct TimelineItemRow: View {
             if showDate {
                 Text(item.date, style: .time)
                     .font(.caption)
+                    .fontWeight(.medium)
                     .foregroundStyle(.secondary)
             }
         }
@@ -103,12 +110,13 @@ struct TimelineItemRow: View {
     @ViewBuilder
     private var categoryBadge: some View {
         Text(item.type.categoryName)
-            .font(.caption2)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
             .background(
                 Capsule()
-                    .fill(item.type.color.opacity(0.15))
+                    .fill(item.type.color.opacity(0.2))
             )
             .foregroundStyle(item.type.color)
     }

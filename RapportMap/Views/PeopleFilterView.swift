@@ -21,7 +21,22 @@ struct PeopleFilterView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                
+
+                Section("정렬") {
+                    Picker("정렬 기준", selection: $filterOptions.sortOption) {
+                        ForEach(SortOption.allCases, id: \.self) { option in
+                            Text(option.rawValue).tag(option)
+                        }
+                    }
+
+                    Toggle(isOn: $filterOptions.sortAscending) {
+                        HStack {
+                            Image(systemName: filterOptions.sortAscending ? "arrow.up" : "arrow.down")
+                            Text(filterOptions.sortAscending ? "오름차순" : "내림차순")
+                        }
+                    }
+                }
+
                 Section("관계 상태") {
                     ForEach(RelationshipState.allCases, id: \.self) { state in
                         Toggle(isOn: Binding(

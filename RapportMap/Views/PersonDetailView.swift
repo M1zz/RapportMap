@@ -80,6 +80,7 @@ enum ContactSyncStatus {
 struct PersonDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @Query private var allNotifications: [NotificationHistory]
     @State private var showingVoiceRecorder = false
     @State private var showingAddCriticalAction = false
     @State private var showingInteractionEdit = false
@@ -100,9 +101,15 @@ struct PersonDetailView: View {
     @StateObject private var calendarManager = CalendarManager.shared
     @State private var showingAddEvent = false // 일정 추가 시트
     @State private var upcomingEvents: [EKEvent] = [] // 다가오는 일정들
+    @State private var selectedNotification: NotificationHistory? = nil // 선택된 알림
     @Binding var selectedTab: Int
 
     @Bindable var person: Person
+
+    // 이 사람과 연관된 알림들
+    private var personNotifications: [NotificationHistory] {
+        allNotifications.filter { $0.personID == person.id && !$0.isRead }
+    }
 
     init(person: Person, selectedTab: Binding<Int> = .constant(0)) {
         self._person = Bindable(person)
@@ -115,11 +122,6 @@ struct PersonDetailView: View {
     
     var body: some View {
         Form {
-            // 배지 섹션 (항상 표시)
-            if person.hasBadges {
-                badgesSection
-            }
-
             // 선택된 탭에 따라 다른 내용 표시
             switch currentTab {
             case .records:
@@ -277,7 +279,7 @@ struct PersonDetailView: View {
         }
     }
     
-    // MARK: - Badge Section
+    // MARK: - Badge Section (Deprecated - 사용하지 않음)
     @ViewBuilder
     private var badgesSection: some View {
         Section {
@@ -331,6 +333,43 @@ struct PersonDetailView: View {
         }
     }
 
+    // MARK: - Notification-based Badge Section
+    @ViewBuilder
+    private var notificationBadgesSection: some View {
+        Section {
+            VStack(spacing: 12) {
+                ForEach(personNotifications.prefix(5)) { notification in
+                    NotificationBadgeRow(notification: notification) {
+                        selectedNotification = notification
+                    }
+                }
+
+                if personNotifications.count > 5 {
+                    Text("외 \(personNotifications.count - 5)개 더...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            HStack {
+                Image(systemName: "bell.badge.fill")
+                    .foregroundStyle(.red)
+                Text("주의가 필요한 항목")
+                    .font(.headline)
+                Spacer()
+                Text("\(personNotifications.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.red.opacity(0.2)))
+            }
+        }
+        .sheet(item: $selectedNotification) { notification in
+            NotificationDetailSheet(notification: notification)
+        }
+    }
+
     // MARK: - Tab Content Views
     @ViewBuilder
     private var activitiesTabContent: some View {
@@ -357,6 +396,11 @@ struct PersonDetailView: View {
 
     @ViewBuilder
     private var recordsTabContent: some View {
+        // 주의가 필요한 항목 (알림 히스토리 기반)
+        if !personNotifications.isEmpty {
+            notificationBadgesSection
+        }
+
         // 상호작용 기록
         recentInteractionsSection
 
@@ -1608,5 +1652,198 @@ struct BadgeCard: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Notification Badge Row
+struct NotificationBadgeRow: View {
+    let notification: NotificationHistory
+    let action: () -> Void
+
+    private var iconColor: Color {
+        switch notification.notificationType.color {
+        case "red": return .red
+        case "orange": return .orange
+        case "blue": return .blue
+        case "purple": return .purple
+        case "green": return .green
+        default: return .gray
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                // 아이콘
+                ZStack {
+                    Circle()
+                        .fill(iconColor.opacity(0.15))
+                        .frame(width: 44, height: 44)
+
+                    Image(systemName: notification.notificationType.icon)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(iconColor)
+                }
+
+                // 내용
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(notification.title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+
+                    Text(notification.body)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+
+                    Text(notification.relativeTimeString)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Notification Detail Sheet
+struct NotificationDetailSheet: View {
+    let notification: NotificationHistory
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    @Query private var people: [Person]
+
+    private var associatedPerson: Person? {
+        guard let personID = notification.personID else { return nil }
+        return people.first { $0.id == personID }
+    }
+
+    private var iconColor: Color {
+        switch notification.notificationType.color {
+        case "red": return .red
+        case "orange": return .orange
+        case "blue": return .blue
+        case "purple": return .purple
+        case "green": return .green
+        default: return .gray
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // 헤더
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            ZStack {
+                                Circle()
+                                    .fill(iconColor.opacity(0.15))
+                                    .frame(width: 60, height: 60)
+
+                                Image(systemName: notification.notificationType.icon)
+                                    .font(.system(size: 28, weight: .medium))
+                                    .foregroundStyle(iconColor)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(notification.notificationType.rawValue)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                Text(notification.title)
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                            }
+
+                            Spacer()
+                        }
+
+                        Text(notification.deliveredDate.formatted(date: .long, time: .shortened))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .cornerRadius(12)
+
+                    // 알림 내용
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("내용")
+                            .font(.headline)
+
+                        Text(notification.body)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .cornerRadius(12)
+
+                    // 연결된 사람 정보
+                    if let person = associatedPerson {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("관련 인물")
+                                .font(.headline)
+
+                            HStack {
+                                Text(person.name)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+
+                                Spacer()
+                            }
+                        }
+                        .padding()
+                        .background(Color(.secondarySystemGroupedBackground))
+                        .cornerRadius(12)
+                    }
+
+                    // 액션 정보
+                    if let actionTitle = notification.actionTitle {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("관련 액션")
+                                .font(.headline)
+
+                            Text(actionTitle)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.secondarySystemGroupedBackground))
+                        .cornerRadius(12)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("알림 상세")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("완료") {
+                        // 알림을 읽음으로 표시
+                        notification.markAsRead()
+                        try? context.save()
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                if !notification.isRead {
+                    notification.markAsRead()
+                    try? context.save()
+                }
+            }
+        }
     }
 }
