@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import PhotosUI
 
 // MARK: - ConversationRecordsView
 struct ConversationRecordsView: View {
@@ -464,7 +465,24 @@ struct ConversationRecordDetailRow: View {
                     .font(.body)
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
-                
+
+                // 첨부된 사진 표시
+                if let imageDataArray = record.imageDataArray, !imageDataArray.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(Array(imageDataArray.enumerated()), id: \.offset) { index, imageData in
+                                if let uiImage = UIImage(data: imageData) {
+                                    Image(uiImage: uiImage)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 80, height: 80)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Text(record.relativeDate)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -546,6 +564,8 @@ struct AddConversationRecordSheet: View {
     
     @State private var content = ""
     @State private var priority: ConversationPriority = .normal
+    @State private var selectedImages: [Data] = []
+    @State private var selectedPhotoItems: [PhotosPickerItem] = []
     
     private var typeColor: Color {
         return type.color
@@ -591,15 +611,67 @@ struct AddConversationRecordSheet: View {
                 
                 Section("우선순위") {
                     Picker("우선순위", selection: $priority) {
-                        ForEach(ConversationPriority.allCases, id: \.self) { priority in
-                            HStack {
-                                Text(priority.emoji)
-                                Text(priority.title)
-                            }
-                            .tag(priority)
+                        ForEach(ConversationPriority.allCases, id: \.self) { p in
+                            Text("\(p.emoji) \(p.title)")
+                                .tag(p)
                         }
                     }
                     .pickerStyle(.segmented)
+                }
+
+                // 사진 섹션
+                Section {
+                    PhotosPicker(selection: $selectedPhotoItems, maxSelectionCount: 10, matching: .images) {
+                        HStack {
+                            Image(systemName: "photo.badge.plus")
+                            Text("사진 추가")
+                            Spacer()
+                            if !selectedImages.isEmpty {
+                                Text("\(selectedImages.count)장")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    if !selectedImages.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(Array(selectedImages.enumerated()), id: \.offset) { index, imageData in
+                                    if let uiImage = UIImage(data: imageData) {
+                                        ZStack(alignment: .topTrailing) {
+                                            Image(uiImage: uiImage)
+                                                .resizable()
+                                                .scaledToFill()
+                                                .frame(width: 100, height: 100)
+                                                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                                            Button {
+                                                selectedImages.remove(at: index)
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .foregroundStyle(.white)
+                                                    .background(Circle().fill(.black.opacity(0.6)))
+                                            }
+                                            .offset(x: -4, y: 4)
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                } header: {
+                    Text("첨부 사진")
+                }
+                .onChange(of: selectedPhotoItems) { oldValue, newValue in
+                    Task {
+                        selectedImages = []
+                        for item in newValue {
+                            if let data = try? await item.loadTransferable(type: Data.self) {
+                                selectedImages.append(data)
+                            }
+                        }
+                    }
                 }
                 
                 if !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -650,13 +722,19 @@ struct AddConversationRecordSheet: View {
     private func addRecord() {
         let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedContent.isEmpty else { return }
-        
+
         let record = person.addConversationRecord(
             type: type,
             content: trimmedContent,
             priority: priority,
             date: Date()
         )
+
+        // 사진 추가
+        if !selectedImages.isEmpty {
+            record.imageDataArray = selectedImages
+        }
+
         context.insert(record)
         
         do {

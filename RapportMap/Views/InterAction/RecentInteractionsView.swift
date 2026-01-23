@@ -1088,7 +1088,7 @@ struct CreateInteractionRecordSheet: View {
             matchingMeetingType = .mentoring
         case .meal:
             matchingMeetingType = .meal
-        case .contact, .call, .message:
+        case .contact, .call, .message, .quickNote:
             // 스몰토크는 일반 대화나 커피 미팅과 연결
             return person.meetingRecords
                 .filter { [.general, .coffee].contains($0.meetingType) }
@@ -1612,7 +1612,7 @@ struct CreateInteractionRecordSheet: View {
             return "멘토링"
         case .meal:
             return "식사"
-        case .contact, .call, .message:
+        case .contact, .call, .message, .quickNote:
             return "대화"
         case .meeting:
             return "만남"

@@ -8,18 +8,21 @@
 import SwiftUI
 import SwiftData
 import Contacts
+import EventKit
 
 // 상세 뷰 탭 정의
 enum PersonDetailTab: Int, CaseIterable {
-    case activities = 0
-    case relationship = 1
-    case info = 2
-    
+    case records = 0
+    case timeline = 1
+    case activities = 2
+    case info = 3
+
     var title: String {
         switch self {
-        case .info: return "정보"
+        case .records: return "기록"
+        case .timeline: return "타임라인"
         case .activities: return "활동"
-        case .relationship: return "관계"
+        case .info: return "정보"
         }
     }
 }
@@ -77,6 +80,7 @@ enum ContactSyncStatus {
 struct PersonDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @Query private var allNotifications: [NotificationHistory]
     @State private var showingVoiceRecorder = false
     @State private var showingAddCriticalAction = false
     @State private var showingInteractionEdit = false
@@ -94,9 +98,18 @@ struct PersonDetailView: View {
     @State private var showingImagePicker = false // 이미지 피커 표시
     @State private var showingImageSourceOptions = false // 이미지 소스 선택 액션시트
     @StateObject private var contactsManager = ContactsManager.shared
+    @StateObject private var calendarManager = CalendarManager.shared
+    @State private var showingAddEvent = false // 일정 추가 시트
+    @State private var upcomingEvents: [EKEvent] = [] // 다가오는 일정들
+    @State private var selectedNotification: NotificationHistory? = nil // 선택된 알림
     @Binding var selectedTab: Int
-    
+
     @Bindable var person: Person
+
+    // 이 사람과 연관된 알림들
+    private var personNotifications: [NotificationHistory] {
+        allNotifications.filter { $0.personID == person.id && !$0.isRead }
+    }
 
     init(person: Person, selectedTab: Binding<Int> = .constant(0)) {
         self._person = Bindable(person)
@@ -111,10 +124,12 @@ struct PersonDetailView: View {
         Form {
             // 선택된 탭에 따라 다른 내용 표시
             switch currentTab {
+            case .records:
+                recordsTabContent
+            case .timeline:
+                timelineTabContent
             case .activities:
-                activitiesTabContent  
-            case .relationship:
-                relationshipTabContent
+                activitiesTabContent
             case .info:
                 infoTabContent
             }
@@ -128,17 +143,23 @@ struct PersonDetailView: View {
                         Button {
                             selectedTab = 0
                         } label: {
-                            Label("활동", systemImage: "clock.arrow.circlepath")
+                            Label("기록", systemImage: "book")
                         }
 
                         Button {
                             selectedTab = 1
                         } label: {
-                            Label("관계", systemImage: "person.2")
+                            Label("타임라인", systemImage: "clock.arrow.circlepath")
                         }
 
                         Button {
                             selectedTab = 2
+                        } label: {
+                            Label("활동", systemImage: "checklist")
+                        }
+
+                        Button {
+                            selectedTab = 3
                         } label: {
                             Label("정보", systemImage: "info.circle")
                         }
@@ -152,9 +173,10 @@ struct PersonDetailView: View {
                     }
                 } else {
                     Picker("", selection: $selectedTab) {
-                        Text("활동").tag(0)
-                        Text("관계").tag(1)
-                        Text("정보").tag(2)
+                        Text("기록").tag(0)
+                        Text("타임라인").tag(1)
+                        Text("활동").tag(2)
+                        Text("정보").tag(3)
                     }
                     .pickerStyle(.segmented)
                 }
@@ -250,28 +272,142 @@ struct PersonDetailView: View {
             }
             Button("취소", role: .cancel) { }
         }
+        .sheet(isPresented: $showingAddEvent) {
+            AddEventSheet(person: person) { _ in
+                loadUpcomingEvents()
+            }
+        }
     }
     
+    // MARK: - Badge Section (Deprecated - 사용하지 않음)
+    @ViewBuilder
+    private var badgesSection: some View {
+        Section {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    // 크리티컬 액션 배지
+                    if person.criticalActionsCount > 0 {
+                        BadgeCard(
+                            count: person.criticalActionsCount,
+                            title: "긴급 액션",
+                            color: .red,
+                            icon: "exclamationmark.circle.fill"
+                        ) {
+                            selectedTab = 0 // 활동 탭으로 이동
+                        }
+                    }
+
+                    // 미완료 액션 배지
+                    if person.incompleteActionsCount > 0 {
+                        BadgeCard(
+                            count: person.incompleteActionsCount,
+                            title: "미완료 액션",
+                            color: .blue,
+                            icon: "checkmark.circle"
+                        ) {
+                            selectedTab = 0 // 활동 탭으로 이동
+                        }
+                    }
+
+                    // 중요 항목 배지
+                    if person.importantItemsCount > 0 {
+                        BadgeCard(
+                            count: person.importantItemsCount,
+                            title: "중요 항목",
+                            color: .yellow,
+                            icon: "star.fill"
+                        ) {
+                            selectedTab = 1 // 타임라인 탭으로 이동
+                        }
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+        } header: {
+            HStack {
+                Image(systemName: "bell.badge.fill")
+                    .foregroundStyle(.red)
+                Text("주의가 필요한 항목")
+                    .font(.headline)
+            }
+        }
+    }
+
+    // MARK: - Notification-based Badge Section
+    @ViewBuilder
+    private var notificationBadgesSection: some View {
+        Section {
+            VStack(spacing: 12) {
+                ForEach(personNotifications.prefix(5)) { notification in
+                    NotificationBadgeRow(notification: notification) {
+                        selectedNotification = notification
+                    }
+                }
+
+                if personNotifications.count > 5 {
+                    Text("외 \(personNotifications.count - 5)개 더...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            HStack {
+                Image(systemName: "bell.badge.fill")
+                    .foregroundStyle(.red)
+                Text("주의가 필요한 항목")
+                    .font(.headline)
+                Spacer()
+                Text("\(personNotifications.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.red.opacity(0.2)))
+            }
+        }
+        .sheet(item: $selectedNotification) { notification in
+            NotificationDetailSheet(notification: notification)
+        }
+    }
+
     // MARK: - Tab Content Views
     @ViewBuilder
     private var activitiesTabContent: some View {
-        // 상호작용 섹션
-        recentInteractionsSection
-        
+        // 캘린더 일정 섹션
+        calendarEventsSection
+
         // 녹음 섹션들
         recordingSection
-        
+
         // 놓치면 안되는 것들
         criticalActionsSection
-    }
-    
-    @ViewBuilder
-    private var relationshipTabContent: some View {
+
         // 관계 상태
         relationshipStatusSection
-        
-        // 대화/상태
-        conversationStateSection
+    }
+
+    @ViewBuilder
+    private var timelineTabContent: some View {
+        Section {
+            PersonTimelineView(person: person)
+                .frame(height: 600)
+        }
+    }
+
+    @ViewBuilder
+    private var recordsTabContent: some View {
+        // 주의가 필요한 항목 (알림 히스토리 기반)
+        if !personNotifications.isEmpty {
+            notificationBadgesSection
+        }
+
+        // 상호작용 기록
+        recentInteractionsSection
+
+        // 대화 기록 (고민/질문/약속)
+        Section("대화 기록") {
+            ConversationRecordsView(person: person)
+        }
     }
     
     @ViewBuilder
@@ -295,7 +431,53 @@ struct PersonDetailView: View {
             RecentInteractionsView(person: person)
         }
     }
-    
+
+    @ViewBuilder
+    private var calendarEventsSection: some View {
+        Section {
+            // 일정 추가 버튼
+            Button {
+                showingAddEvent = true
+            } label: {
+                HStack {
+                    Image(systemName: "calendar.badge.plus")
+                        .font(.title2)
+                        .foregroundStyle(.blue)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("일정 추가")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text("캘린더에 미팅 일정 추가")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+
+                    Image(systemName: "arrow.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // 다가오는 일정
+            if !upcomingEvents.isEmpty {
+                ForEach(upcomingEvents, id: \.eventIdentifier) { event in
+                    UpcomingEventRow(event: event)
+                }
+            }
+        } header: {
+            Text("일정")
+        }
+        .onAppear {
+            calendarManager.checkAuthorizationStatus()
+            loadUpcomingEvents()
+        }
+    }
+
+    private func loadUpcomingEvents() {
+        upcomingEvents = calendarManager.fetchUpcomingEvents(for: person, days: 30)
+    }
+
     @ViewBuilder
     private var recordingSection: some View {
         Section("녹음") {
@@ -1364,5 +1546,304 @@ struct ImportantConversationRow: View {
         formatter.unitsStyle = .abbreviated
         formatter.locale = Locale(identifier: "ko_KR")
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+// MARK: - Upcoming Event Row
+
+struct UpcomingEventRow: View {
+    let event: EKEvent
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                // 날짜 및 시간
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(event.startDate, style: .date)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.blue)
+                    Text(event.startDate, style: .time)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                // 소요 시간
+                if let endDate = event.endDate {
+                    let duration = Int(endDate.timeIntervalSince(event.startDate) / 60)
+                    Text("\(duration)분")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(Color.blue.opacity(0.1))
+                        )
+                }
+            }
+
+            // 제목
+            if let title = event.title {
+                Text(title)
+                    .font(.body)
+                    .fontWeight(.medium)
+            }
+
+            // 메모
+            if let notes = event.notes, !notes.isEmpty {
+                Text(notes)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.blue.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Color.blue.opacity(0.3), lineWidth: 1)
+                )
+        )
+    }
+}
+
+// MARK: - Badge Card Component
+struct BadgeCard: View {
+    let count: Int
+    let title: String
+    let color: Color
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                // 아이콘과 숫자
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.title2)
+                    Text("\(count)")
+                        .font(.title)
+                        .fontWeight(.bold)
+                }
+                .foregroundStyle(color)
+
+                // 제목
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(minWidth: 100)
+            .padding(.vertical, 16)
+            .padding(.horizontal, 20)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(color.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(color.opacity(0.4), lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Notification Badge Row
+struct NotificationBadgeRow: View {
+    let notification: NotificationHistory
+    let action: () -> Void
+
+    private var iconColor: Color {
+        switch notification.notificationType.color {
+        case "red": return .red
+        case "orange": return .orange
+        case "blue": return .blue
+        case "purple": return .purple
+        case "green": return .green
+        default: return .gray
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                // 아이콘
+                ZStack {
+                    Circle()
+                        .fill(iconColor.opacity(0.15))
+                        .frame(width: 44, height: 44)
+
+                    Image(systemName: notification.notificationType.icon)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(iconColor)
+                }
+
+                // 내용
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(notification.title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+
+                    Text(notification.body)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+
+                    Text(notification.relativeTimeString)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Notification Detail Sheet
+struct NotificationDetailSheet: View {
+    let notification: NotificationHistory
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    @Query private var people: [Person]
+
+    private var associatedPerson: Person? {
+        guard let personID = notification.personID else { return nil }
+        return people.first { $0.id == personID }
+    }
+
+    private var iconColor: Color {
+        switch notification.notificationType.color {
+        case "red": return .red
+        case "orange": return .orange
+        case "blue": return .blue
+        case "purple": return .purple
+        case "green": return .green
+        default: return .gray
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // 헤더
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            ZStack {
+                                Circle()
+                                    .fill(iconColor.opacity(0.15))
+                                    .frame(width: 60, height: 60)
+
+                                Image(systemName: notification.notificationType.icon)
+                                    .font(.system(size: 28, weight: .medium))
+                                    .foregroundStyle(iconColor)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(notification.notificationType.rawValue)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                Text(notification.title)
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                            }
+
+                            Spacer()
+                        }
+
+                        Text(notification.deliveredDate.formatted(date: .long, time: .shortened))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .cornerRadius(12)
+
+                    // 알림 내용
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("내용")
+                            .font(.headline)
+
+                        Text(notification.body)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .cornerRadius(12)
+
+                    // 연결된 사람 정보
+                    if let person = associatedPerson {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("관련 인물")
+                                .font(.headline)
+
+                            HStack {
+                                Text(person.name)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+
+                                Spacer()
+                            }
+                        }
+                        .padding()
+                        .background(Color(.secondarySystemGroupedBackground))
+                        .cornerRadius(12)
+                    }
+
+                    // 액션 정보
+                    if let actionTitle = notification.actionTitle {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("관련 액션")
+                                .font(.headline)
+
+                            Text(actionTitle)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.secondarySystemGroupedBackground))
+                        .cornerRadius(12)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("알림 상세")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("완료") {
+                        // 알림을 읽음으로 표시
+                        notification.markAsRead()
+                        try? context.save()
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                if !notification.isRead {
+                    notification.markAsRead()
+                    try? context.save()
+                }
+            }
+        }
     }
 }

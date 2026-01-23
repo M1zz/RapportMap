@@ -46,11 +46,13 @@ struct PeopleListView: View {
     @State private var searchText = ""
     @State private var showingFilter = false
     @State private var showingNotificationHistory = false
+    @State private var showingSettings = false
     @State private var filterOptions = FilterOptions()
     
-    // 검색 필터링된 사람들
+    // 검색 필터링 및 정렬된 사람들
     private var filteredPeople: [Person] {
-        applyFilters(to: people)
+        let filtered = applyFilters(to: people)
+        return applySorting(to: filtered)
     }
     
     // MARK: - Filtering Logic
@@ -135,7 +137,7 @@ struct PeopleListView: View {
     
     private func applyLastContactDaysFilter(to people: [Person]) -> [Person] {
         guard let daysSince = filterOptions.lastContactDays else { return people }
-        
+
         let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysSince, to: Date()) ?? Date()
         return people.filter { person in
             guard let lastContact = person.lastContact else {
@@ -144,7 +146,50 @@ struct PeopleListView: View {
             return lastContact >= cutoffDate
         }
     }
-    
+
+    // MARK: - Sorting Logic
+
+    private func applySorting(to people: [Person]) -> [Person] {
+        let sorted: [Person]
+
+        switch filterOptions.sortOption {
+        case .name:
+            sorted = people.sorted { p1, p2 in
+                p1.name.localizedCompare(p2.name) == .orderedAscending
+            }
+
+        case .relationshipHealth:
+            sorted = people.sorted { p1, p2 in
+                let score1 = p1.getRelationshipAnalysis().currentScore
+                let score2 = p2.getRelationshipAnalysis().currentScore
+                return score1 > score2
+            }
+
+        case .lastContact:
+            sorted = people.sorted { p1, p2 in
+                let date1 = p1.mostRecentInteractionDate ?? Date.distantPast
+                let date2 = p2.mostRecentInteractionDate ?? Date.distantPast
+                return date1 > date2
+            }
+
+        case .criticalActions:
+            sorted = people.sorted { p1, p2 in
+                let count1 = p1.criticalActionsCount
+                let count2 = p2.criticalActionsCount
+                return count1 > count2
+            }
+
+        case .incompleteActions:
+            sorted = people.sorted { p1, p2 in
+                let count1 = p1.incompleteActionsCount
+                let count2 = p2.incompleteActionsCount
+                return count1 > count2
+            }
+        }
+
+        return filterOptions.sortAscending ? sorted : sorted.reversed()
+    }
+
     var body: some View {
         NavigationStack {
             mainContent
@@ -153,6 +198,7 @@ struct PeopleListView: View {
                 .sheet(isPresented: $showingAdd) { addPersonSheet }
                 .sheet(isPresented: $showingFilter) { filterSheet }
                 .sheet(isPresented: $showingNotificationHistory) { notificationHistorySheet }
+                .sheet(isPresented: $showingSettings) { settingsSheet }
                 .onAppear { handleViewAppear() }
         }
     }
@@ -197,39 +243,31 @@ struct PeopleListView: View {
     
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        #if DEBUG
         ToolbarItem(placement: .navigationBarLeading) {
-            debugMenu
+            settingsButton
         }
-        #endif
-                
+
         ToolbarItem(placement: .navigationBarTrailing) {
             filterButton
         }
-        
+
         ToolbarItem(placement: .navigationBarTrailing) {
             addButton
         }
-        
+
         ToolbarItem(placement: .navigationBarTrailing) {
             notificationHistoryButton
         }
     }
     
-    private var debugMenu: some View {
-        Menu("개발") {
-            Button("샘플 데이터", action: addSampleData)
-            Button("액션 리셋") {
-                DataSeeder.resetDefaultActions(context: context)
-            }
-            Button("연락처에서 가져오기") {
-                Task {
-                    await importFromContacts()
-                }
-            }
+    private var settingsButton: some View {
+        Button {
+            showingSettings = true
+        } label: {
+            Image(systemName: "gearshape.fill")
         }
     }
-    
+
     private var notificationHistoryButton: some View {
         Button {
             showingNotificationHistory = true
@@ -301,7 +339,11 @@ struct PeopleListView: View {
     private var notificationHistorySheet: some View {
         NotificationHistoryView()
     }
-    
+
+    private var settingsSheet: some View {
+        SettingsView()
+    }
+
     // MARK: - Actions & Handlers
     
     private func handleAddPerson(name: String, contact: String) {
