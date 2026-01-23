@@ -14,18 +14,15 @@ import Combine
 
 enum FilterCase: CaseIterable {
     case searchText
-    case relationshipStates
     case neglectedStatus
     case incompleteActions
     case criticalActions
     case lastContactDays
-    
+
     var description: String {
         switch self {
         case .searchText:
             return "검색 텍스트 필터"
-        case .relationshipStates:
-            return "관계 상태 필터"
         case .neglectedStatus:
             return "소홀 상태 필터"
         case .incompleteActions:
@@ -71,19 +68,16 @@ struct PeopleListView: View {
         switch filterCase {
         case .searchText:
             return applySearchTextFilter(to: people)
-            
-        case .relationshipStates:
-            return applyRelationshipStatesFilter(to: people)
-            
+
         case .neglectedStatus:
             return applyNeglectedStatusFilter(to: people)
-            
+
         case .incompleteActions:
             return applyIncompleteActionsFilter(to: people)
-            
+
         case .criticalActions:
             return applyCriticalActionsFilter(to: people)
-            
+
         case .lastContactDays:
             return applyLastContactDaysFilter(to: people)
         }
@@ -97,14 +91,6 @@ struct PeopleListView: View {
         return people.filter { person in
             person.name.localizedCaseInsensitiveContains(searchText) ||
             person.contact.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-    
-    private func applyRelationshipStatesFilter(to people: [Person]) -> [Person] {
-        guard !filterOptions.selectedStates.isEmpty else { return people }
-        
-        return people.filter { person in
-            filterOptions.selectedStates.contains(person.state)
         }
     }
     
@@ -156,13 +142,6 @@ struct PeopleListView: View {
         case .name:
             sorted = people.sorted { p1, p2 in
                 p1.name.localizedCompare(p2.name) == .orderedAscending
-            }
-
-        case .relationshipHealth:
-            sorted = people.sorted { p1, p2 in
-                let score1 = p1.getRelationshipAnalysis().currentScore
-                let score2 = p2.getRelationshipAnalysis().currentScore
-                return score1 > score2
             }
 
         case .lastContact:
@@ -364,9 +343,6 @@ struct PeopleListView: View {
     private func handleViewAppear() {
         // 앱 최초 실행 시 기본 액션 30개 생성
         DataSeeder.seedDefaultActionsIfNeeded(context: context)
-        
-        // 관계 상태 자동 업데이트 스케줄링
-        RelationshipStateManager.shared.scheduleRelationshipStateCheck(context: context)
     }
 
     private func delete(at offsets: IndexSet) {
@@ -420,7 +396,6 @@ struct PeopleListView: View {
         for _ in 0..<count {
             let name = namePool.randomElement()!
             let contact: String = Bool.random() ? randomPhone() : randomEmail(for: name)
-            let state = RelationshipState.allCases.randomElement()!
             let lastMentoring = randomPastDate(maxDays: 60)
             let lastMeal = randomPastDate(maxDays: 90)
             let lastContact = randomPastDate(maxDays: 120)
@@ -429,7 +404,6 @@ struct PeopleListView: View {
                 id: UUID(),
                 name: name,
                 contact: contact,
-                state: state,
                 lastMentoring: lastMentoring,
                 lastMeal: lastMeal,
                 lastContact: lastContact
@@ -531,11 +505,6 @@ struct PersonCard: View {
         return Double(completed) / Double(person.actions.count)
     }
     
-    // 실시간으로 계산되는 관계 분석
-    private var relationshipAnalysis: RelationshipAnalysis {
-        person.getRelationshipAnalysis()
-    }
-    
     private var urgentCriticalActions: [PersonAction] {
         let today = Calendar.current.startOfDay(for: Date())
         return person.actions.filter { action in
@@ -560,10 +529,7 @@ struct PersonCard: View {
 
             // 상호작용 및 정보
             interactionSection
-            
-            // 관계 건강도
-            relationshipHealthSection
-            
+
             // 하단 정보
             footerSection
         }
@@ -602,10 +568,8 @@ struct PersonCard: View {
                         .foregroundStyle(.gray.opacity(0.5))
                 }
                 
-                // 관계 상태 배지 (프로필 사진 아래)
-                relationshipStatusBadge
             }
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(person.name)
                     .font(.title2)
@@ -626,24 +590,6 @@ struct PersonCard: View {
             
             Spacer()
         }
-    }
-    
-    private var relationshipStatusBadge: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(person.state.color)
-                .frame(width: 8, height: 8)
-            Text(person.state.localizedName)
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundStyle(person.state.color)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            Capsule()
-                .fill(person.state.color.opacity(0.15))
-        )
     }
     
     private var urgentAlertSection: some View {
@@ -733,56 +679,7 @@ struct PersonCard: View {
         
         return items
     }
-    
 
-    
-    private var relationshipHealthSection: some View {
-        let analysis = relationshipAnalysis
-        
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.body)
-                    .foregroundStyle(.blue)
-                
-                Text("관계 건강도")
-                    .font(.body)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.blue)
-                
-                Spacer()
-                
-                Text("\(Int(analysis.currentScore))%")
-                    .font(.body)
-                    .fontWeight(.bold)
-                    .foregroundStyle(progressColor(for: analysis.currentScore))
-            }
-            
-            ProgressView(value: analysis.currentScore, total: 100)
-                .tint(progressColor(for: analysis.currentScore))
-                .scaleEffect(y: 0.8)
-            
-            if !analysis.recommendations.isEmpty {
-                Text(analysis.recommendations.first ?? "")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.blue.opacity(0.05))
-        .cornerRadius(10)
-    }
-    
-    private func progressColor(for score: Double) -> Color {
-        switch score {
-        case 70...: return .green
-        case 40..<70: return .orange
-        default: return .red
-        }
-    }
-    
     private var footerSection: some View {
         HStack {
             if let lastInteraction = person.mostRecentInteractionDate {

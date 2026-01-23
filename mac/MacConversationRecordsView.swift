@@ -2,7 +2,7 @@
 //  MacConversationRecordsView.swift
 //  mac
 //
-//  Mac용 대화 기록 뷰 (고민/질문/약속)
+//  Mac용 대화 기록 뷰 (고민/질문/약속) - 통합 입력 방식
 //
 
 import SwiftUI
@@ -14,20 +14,13 @@ struct MacConversationRecordsView: View {
     @Bindable var person: Person
 
     @State private var showingHistory = false
-    @State private var showingAddConcern = false
-    @State private var showingAddQuestion = false
-    @State private var showingAddPromise = false
+    @State private var newContent = ""
+    @State private var selectedType: ConversationType = .concern
+    @State private var selectedPriority: ConversationPriority = .normal
+    @State private var isImportant = false
 
-    private var unsolvedConcernsCount: Int {
-        person.getConversationRecords(ofType: .concern).filter { !$0.isResolved }.count
-    }
-
-    private var unsolvedQuestionsCount: Int {
-        person.getConversationRecords(ofType: .question).filter { !$0.isResolved }.count
-    }
-
-    private var unsolvedPromisesCount: Int {
-        person.getConversationRecords(ofType: .promise).filter { !$0.isResolved }.count
+    private var unsolvedCount: Int {
+        person.conversationRecords.filter { !$0.isResolved }.count
     }
 
     var body: some View {
@@ -39,45 +32,121 @@ struct MacConversationRecordsView: View {
 
                 Spacer()
 
+                if unsolvedCount > 0 {
+                    Text("미해결 \(unsolvedCount)개")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Button {
                     showingHistory = true
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "clock.arrow.circlepath")
-                        Text("전체 기록 보기")
+                        Text("전체 기록")
                     }
                 }
             }
 
-            // 대화 유형 버튼들
-            HStack(spacing: 12) {
-                MacConversationTypeButton(
-                    title: ConversationType.concern.title,
-                    icon: ConversationType.concern.systemImage,
-                    color: NSColor(ConversationType.concern.color),
-                    count: unsolvedConcernsCount,
-                    action: { showingAddConcern = true }
-                )
+            // 통합 입력 필드
+            VStack(spacing: 12) {
+                // 타입 선택 (세그먼트 스타일)
+                HStack(spacing: 8) {
+                    ForEach(ConversationType.allCases, id: \.self) { type in
+                        Button {
+                            selectedType = type
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: type.systemImage)
+                                Text(type.title)
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(selectedType == type ? Color(type.color).opacity(0.2) : Color.clear)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(selectedType == type ? Color(type.color) : Color.gray.opacity(0.3), lineWidth: 1)
+                            )
+                            .foregroundStyle(selectedType == type ? Color(type.color) : .secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
 
-                MacConversationTypeButton(
-                    title: ConversationType.question.title,
-                    icon: ConversationType.question.systemImage,
-                    color: NSColor(ConversationType.question.color),
-                    count: unsolvedQuestionsCount,
-                    action: { showingAddQuestion = true }
-                )
+                // 내용 입력
+                TextEditor(text: $newContent)
+                    .frame(minHeight: 80)
+                    .padding(8)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                    )
+                    .overlay(alignment: .topLeading) {
+                        if newContent.isEmpty {
+                            Text(placeholderText)
+                                .font(.body)
+                                .foregroundStyle(.secondary.opacity(0.5))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 16)
+                                .allowsHitTesting(false)
+                        }
+                    }
 
-                MacConversationTypeButton(
-                    title: ConversationType.promise.title,
-                    icon: ConversationType.promise.systemImage,
-                    color: NSColor(ConversationType.promise.color),
-                    count: unsolvedPromisesCount,
-                    action: { showingAddPromise = true }
-                )
+                // 옵션 및 저장 버튼
+                HStack {
+                    // 우선순위
+                    Picker("", selection: $selectedPriority) {
+                        ForEach(ConversationPriority.allCases, id: \.self) { priority in
+                            Text(priority.title).tag(priority)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 100)
+
+                    // 중요 표시
+                    Toggle(isOn: $isImportant) {
+                        Image(systemName: isImportant ? "star.fill" : "star")
+                            .foregroundStyle(isImportant ? .yellow : .gray)
+                    }
+                    .toggleStyle(.button)
+                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    // 저장 버튼
+                    Button {
+                        addConversation()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill")
+                            Text("추가")
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(newContent.isEmpty ? Color.gray : Color(selectedType.color))
+                        .foregroundStyle(.white)
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(newContent.isEmpty)
+                }
             }
+            .padding()
+            .background(Color(selectedType.color).opacity(0.05))
+            .cornerRadius(10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color(selectedType.color).opacity(0.2), lineWidth: 1)
+            )
 
             // 미해결 항목들
-            if unsolvedConcernsCount > 0 || unsolvedQuestionsCount > 0 || unsolvedPromisesCount > 0 {
+            if unsolvedCount > 0 {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("미해결 항목")
                         .font(.caption)
@@ -104,71 +173,41 @@ struct MacConversationRecordsView: View {
             MacConversationHistoryView(person: person)
                 .frame(minWidth: 700, minHeight: 500)
         }
-        .sheet(isPresented: $showingAddConcern) {
-            MacAddConversationSheet(person: person, type: .concern, context: context)
-                .frame(width: 500, height: 400)
-        }
-        .sheet(isPresented: $showingAddQuestion) {
-            MacAddConversationSheet(person: person, type: .question, context: context)
-                .frame(width: 500, height: 400)
-        }
-        .sheet(isPresented: $showingAddPromise) {
-            MacAddConversationSheet(person: person, type: .promise, context: context)
-                .frame(width: 500, height: 400)
+    }
+
+    private var placeholderText: String {
+        switch selectedType {
+        case .concern: return "이 사람이 가진 고민을 기록하세요..."
+        case .question: return "이 사람에게 물어볼 질문을 기록하세요..."
+        case .promise: return "이 사람과의 약속을 기록하세요..."
         }
     }
 
     private func getAllUnsolvedRecords() -> [ConversationRecord] {
         return person.conversationRecords.filter { !$0.isResolved }.sorted { $0.date > $1.date }
     }
-}
 
-// MARK: - Conversation Type Button
-struct MacConversationTypeButton: View {
-    let title: String
-    let icon: String
-    let color: NSColor
-    let count: Int
-    let action: () -> Void
+    private func addConversation() {
+        let trimmed = newContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
 
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: icon)
-                        .font(.title2)
-                        .foregroundStyle(Color(color))
+        let record = person.addConversationRecord(
+            type: selectedType,
+            content: trimmed,
+            priority: selectedPriority,
+            isImportant: isImportant
+        )
+        context.insert(record)
 
-                    if count > 0 {
-                        ZStack {
-                            Circle()
-                                .fill(.red)
-                                .frame(width: 20, height: 20)
-                            Text("\(count)")
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.white)
-                        }
-                        .offset(x: 10, y: -10)
-                    }
-                }
-
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.primary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color(color).opacity(0.1))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color(color).opacity(0.3), lineWidth: 1)
-                    )
-            )
+        do {
+            try context.save()
+            // 초기화
+            newContent = ""
+            selectedPriority = .normal
+            isImportant = false
+        } catch {
+            print("❌ 대화 기록 저장 실패: \(error)")
         }
-        .buttonStyle(.plain)
     }
 }
 
@@ -227,80 +266,6 @@ struct MacConversationRecordRow: View {
             MacConversationDetailView(record: record, context: context)
                 .frame(width: 500, height: 400)
         }
-    }
-}
-
-// MARK: - Add Conversation Sheet
-struct MacAddConversationSheet: View {
-    let person: Person
-    let type: ConversationType
-    let context: ModelContext
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var content = ""
-    @State private var priority: ConversationPriority = .normal
-    @State private var isImportant = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // 헤더
-            HStack {
-                Text("\(type.title) 기록하기")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                Spacer()
-                Button("취소") {
-                    dismiss()
-                }
-            }
-            .padding()
-            .background(Color(NSColor.controlBackgroundColor))
-
-            Divider()
-
-            // 내용
-            Form {
-                Section("내용") {
-                    TextEditor(text: $content)
-                        .frame(minHeight: 150)
-                }
-
-                Section("옵션") {
-                    Picker("우선순위", selection: $priority) {
-                        ForEach(ConversationPriority.allCases, id: \.self) { priority in
-                            Text(priority.title).tag(priority)
-                        }
-                    }
-
-                    Toggle("중요 표시", isOn: $isImportant)
-                }
-            }
-            .formStyle(.grouped)
-
-            // 푸터
-            HStack {
-                Spacer()
-                Button("저장") {
-                    addConversation()
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(content.isEmpty)
-            }
-            .padding()
-            .background(Color(NSColor.controlBackgroundColor))
-        }
-    }
-
-    private func addConversation() {
-        let record = person.addConversationRecord(
-            type: type,
-            content: content,
-            priority: priority,
-            isImportant: isImportant
-        )
-        context.insert(record)
-        try? context.save()
     }
 }
 

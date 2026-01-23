@@ -176,10 +176,8 @@ struct CriticalActionReminderRow: View {
                     } else {
                         personAction.markIncomplete()
                     }
-                    
-                    // 관계 상태 즉시 업데이트
-                    personAction.person?.updateRelationshipState()
-                    
+
+
                     try? context.save()
                 } label: {
                     Image(systemName: personAction.isCompleted ? "checkmark.circle.fill" : "circle")

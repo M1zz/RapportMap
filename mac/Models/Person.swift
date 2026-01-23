@@ -10,7 +10,6 @@ final class Person {
     var id: UUID                        // 고유 식별자
     var name: String                    // 이름
     var contact: String                 // 연락처 (전화번호, 이메일 등)
-    var state: RelationshipState        // 현재 관계 상태 (멀어짐/따뜻해지는중/끈끈함)
     
     // MARK: - 프로필 사진
     @Attribute(.externalStorage)
@@ -80,7 +79,6 @@ final class Person {
     ///   - id: 고유 식별자 (기본값: 새로운 UUID)
     ///   - name: 이름 (필수)
     ///   - contact: 연락처 정보 (기본값: 빈 문자열)
-    ///   - state: 관계 상태 (기본값: .distant)
     ///   - currentPhase: 현재 관계 단계 (기본값: .surface)
     ///   - relationshipStartDate: 관계 시작일 (기본값: 현재 날짜)
     ///   - 기타 레거시 필드들 (호환성을 위해 유지, 점진적으로 제거 예정)
@@ -88,7 +86,6 @@ final class Person {
         id: UUID = UUID(),
         name: String,
         contact: String = "",
-        state: RelationshipState = .distant,
         lastMentoring: Date? = nil,
         lastMeal: Date? = nil,
         lastContact: Date? = nil,
@@ -108,7 +105,6 @@ final class Person {
         self.id = id
         self.name = name
         self.contact = contact
-        self.state = state
         
         // 상호작용 기록 (호환성)
         self.lastMentoring = lastMentoring
@@ -134,283 +130,11 @@ final class Person {
     }
 }
 
-/// 관계 상태를 나타내는 열거형
-/// 사람과의 관계 정도를 세 단계로 구분
-enum RelationshipState: String, Codable, CaseIterable {
-    case distant = "distant"    // 멀어진 상태 - 연락이 뜸하거나 관계가 소홀해진 상태
-    case warming = "warming"    // 따뜻해지는 중 - 관계가 발전하고 있는 상태
-    case close = "close"        // 끈끈한 상태 - 좋은 관계를 유지하고 있는 상태
-    
-    /// 각 상태에 맞는 이모지 반환
-    var emoji: String {
-        switch self {
-        case .distant: return "😐"
-        case .warming: return "🙂"
-        case .close: return "😊"
-        }
-    }
-    
-    /// 한국어로 된 관계 상태 이름
-    var localizedName: String {
-        switch self {
-        case .distant: return "멀어짐"
-        case .warming: return "따뜻해지는 중"
-        case .close: return "끈끈함"
-        }
-    }
-    
-    /// 각 관계 상태에 대한 설명 텍스트
-    var description: String {
-        switch self {
-        case .distant:
-            return "관계가 소홀해진 상태예요. 연락을 늘려보세요"
-        case .warming:
-            return "관계가 발전하고 있어요. 꾸준히 관리해보세요"
-        case .close:
-            return "좋은 관계를 유지하고 있어요!"
-        }
-    }
-    
-    /// 각 관계 상태에 해당하는 색상
-    var color: Color {
-        switch self {
-        case .distant: return .blue
-        case .warming: return .orange
-        case .close: return .pink
-        }
-    }
-}
 
-// MARK: - 관계 상태 자동 계산 시스템
-/// Person 모델의 관계 상태를 자동으로 분석하고 업데이트하는 확장
+// MARK: - 상호작용 기록 시스템
+/// Person 모델의 상호작용 기록을 관리하는 확장
 extension Person {
-    
-    /// 현재 관계 상태를 자동으로 계산하여 반환
-    /// 관계 점수(0-100)를 기반으로 세 가지 상태 중 하나를 결정
-    /// - Returns: 계산된 관계 상태 (distant/warming/close)
-    func calculateRelationshipState() -> RelationshipState {
-        let score = calculateRelationshipScore()
-        
-        // 점수 기준으로 관계 상태 결정 (관대한 기준 적용)
-        switch score {
-        case 65...:         // 65점 이상: 끈끈한 관계
-            return .close
-        case 35..<65:       // 35-64점: 발전 중인 관계
-            return .warming
-        default:            // 35점 미만: 멀어진 관계
-            return .distant
-        }
-    }
-    
-    /// 관계 점수 계산 (0-100점)
-    /// 여러 요소를 종합하여 관계의 건강도를 수치로 평가
-    /// - 시간 경과, 액션 완료도, 상호작용 빈도, 미해결 대화 등을 고려
-    /// - Returns: 0-100 사이의 관계 점수
-    func calculateRelationshipScore() -> Double {
-        var totalScore: Double = 40 // 기본 점수 40점 (관대한 시작점)
-        let now = Date()
-        let calendar = Calendar.current
-        
-        // 1. 시간 경과 점수: 최근 상호작용으로부터 경과된 시간 (-25 ~ +20점)
-        let timeDecayScore = calculateTimeDecayScore()
-        totalScore += timeDecayScore
-        
-        // 2. 액션 완료도 점수: 할 일과 약속의 이행 정도 (0-25점)
-        let actionScore = calculateActionCompletionScore()
-        totalScore += actionScore
-        
-        // 3. 상호작용 빈도 점수: 최근 한 달간의 만남/연락 빈도 (0-20점)
-        let interactionScore = calculateInteractionFrequencyScore()
-        totalScore += interactionScore
-        
-        // 4. 새로운 대화 기록 시스템의 미해결 대화 감점 (최대 -12점)
-        let unresolvedConversations = getUnresolvedConversationRecords().count
-        let unsolvedPenalty = min(Double(unresolvedConversations) * 2.0, 12)
-        totalScore -= unsolvedPenalty
-        
-        // 5. 관계 지속 기간 보너스: 오래된 관계에 대한 가산점 (0-15점)
-        let relationshipDuration = calendar.dateComponents([.day], from: relationshipStartDate, to: now).day ?? 0
-        let durationBonus = min(Double(relationshipDuration) / 20.0 * 15, 15) // 20일당 최대 15점
-        totalScore += durationBonus
-        
-        // 6. 최근 상호작용 보너스: 3일 내 활발한 소통에 대한 추가 점수 (0-10점)
-        let recentInteractionBonus = calculateRecentInteractionBonus()
-        totalScore += recentInteractionBonus
-        
-        // 최종 점수를 0-100 범위로 제한
-        return max(0, min(100, totalScore))
-    }
-    
-    /// 시간 경과에 따른 점수 계산
-    /// 마지막 상호작용으로부터 얼마나 시간이 지났는지에 따라 점수 산정
-    /// - Returns: -25점(2달 이상 소원) ~ +20점(최근 1일 이내) 범위의 점수
-    private func calculateTimeDecayScore() -> Double {
-        let now = Date()
-        let calendar = Calendar.current
-        
-        // 가장 최근 상호작용 날짜 찾기 (연락, 식사, 멘토링 중 가장 최근)
-        let recentInteractionDate = [lastContact, lastMeal, lastMentoring]
-            .compactMap { $0 }
-            .max() ?? relationshipStartDate
-        
-        let daysSinceLastInteraction = calendar.dateComponents([.day], from: recentInteractionDate, to: now).day ?? 0
-        
-        // 시간 경과에 따른 단계별 점수 (관대한 기준 적용)
-        switch daysSinceLastInteraction {
-        case 0...1:         // 최근 1일: 매우 좋음
-            return 20
-        case 2...3:         // 2-3일: 좋음
-            return 15
-        case 4...7:         // 4-7일: 보통 좋음
-            return 10
-        case 8...14:        // 1-2주: 약간 좋음
-            return 5
-        case 15...21:       // 2-3주: 중립
-            return 0
-        case 22...35:       // 3-5주: 약간 나쁨
-            return -8
-        case 36...60:       // 5주-2달: 나쁨
-            return -15
-        default:            // 2달 이상: 매우 나쁨
-            return -25
-        }
-    }
-    
-    /// 액션(할 일) 완료도 점수 계산
-    /// 이 사람과 관련된 액션들의 완료율을 기반으로 점수 산정
-    /// Critical 액션의 완료도에 더 높은 가중치 적용
-    /// - Returns: 0-25점 범위의 점수
-    private func calculateActionCompletionScore() -> Double {
-        let totalActions = actions.count
-        guard totalActions > 0 else { return 0 }
-        
-        // 전체 액션 완료율 계산
-        let completedActions = actions.filter { $0.isCompleted }.count
-        let completionRate = Double(completedActions) / Double(totalActions)
-        
-        // Critical 액션들의 완료도는 더 높은 가중치로 계산
-        let criticalActions = actions.filter { $0.action?.type == .critical }
-        let completedCriticalActions = criticalActions.filter { $0.isCompleted }
-        
-        let criticalBonus = criticalActions.isEmpty ? 0 : 
-            Double(completedCriticalActions.count) / Double(criticalActions.count) * 10
-        
-        // 기본 완료율(15점) + Critical 액션 보너스(10점) = 최대 25점
-        return completionRate * 15 + criticalBonus
-    }
-    
-    /// 상호작용 빈도 점수 계산
-    /// 최근 30일 내의 다양한 상호작용(연락, 식사, 멘토링, 미팅) 빈도 측정
-    /// - Returns: 0-20점 범위의 점수
-    private func calculateInteractionFrequencyScore() -> Double {
-        let now = Date()
-        let calendar = Calendar.current
-        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: now) ?? now
-        
-        var interactionCount = 0
-        
-        // 최근 30일 내 기본 상호작용 카운트 (연락, 식사, 멘토링)
-        [lastContact, lastMeal, lastMentoring].forEach { date in
-            if let date = date, date >= thirtyDaysAgo {
-                interactionCount += 1
-            }
-        }
-        
-        // 미팅 기록도 상호작용에 포함
-        let recentMeetings = meetingRecords.filter { $0.date >= thirtyDaysAgo }.count
-        interactionCount += recentMeetings
-        
-        // 상호작용 빈도에 따른 단계별 점수
-        switch interactionCount {
-        case 8...:      // 8회 이상: 매우 활발한 관계
-            return 20
-        case 5...7:     // 5-7회: 활발한 관계
-            return 15
-        case 3...4:     // 3-4회: 적당한 관계
-            return 10
-        case 1...2:     // 1-2회: 소극적인 관계
-            return 5
-        default:        // 0회: 상호작용 없음
-            return 0
-        }
-    }
-    
-    /// 최근 상호작용 보너스 점수 계산
-    /// 최근 3일 내의 활발한 소통에 대한 추가 보너스 점수
-    /// - Returns: 0-10점 범위의 보너스 점수
-    private func calculateRecentInteractionBonus() -> Double {
-        let now = Date()
-        let calendar = Calendar.current
-        let threeDaysAgo = calendar.date(byAdding: .day, value: -3, to: now) ?? now
-        
-        var recentBonus: Double = 0
-        
-        // 최근 3일 내 각 상호작용 타입별 보너스 점수
-        if let lastContact = lastContact, lastContact >= threeDaysAgo {
-            recentBonus += 3    // 최근 연락 보너스
-        }
-        if let lastMeal = lastMeal, lastMeal >= threeDaysAgo {
-            recentBonus += 3    // 최근 식사 보너스
-        }
-        if let lastMentoring = lastMentoring, lastMentoring >= threeDaysAgo {
-            recentBonus += 4    // 최근 멘토링 보너스 (더 높은 가중치)
-        }
-        
-        return min(recentBonus, 10) // 최대 10점으로 제한
-    }
-    
-    /// 관계 상태를 자동으로 업데이트하는 메인 메서드
-    /// 계산된 점수를 바탕으로 관계 상태를 갱신
-    /// 소홀함 상태면 무조건 "멀어짐"으로 조정
-    /// 상태 변경 시 콘솔에 로그를 출력하여 디버깅 지원
-    func updateRelationshipState() {
-        var calculatedState = calculateRelationshipState()
-        let currentScore = calculateRelationshipScore()
 
-        // 소홀함 상태라면 무조건 "멀어짐"으로 조정
-        if isNeglected && calculatedState != .distant {
-            calculatedState = .distant
-            print("⚠️ [RelationshipState] \(name)님은 소홀함 상태로 인해 '멀어짐'으로 조정됨")
-        }
-
-        // 상태가 실제로 변경된 경우에만 업데이트 수행
-        if state != calculatedState {
-            let oldState = state
-            state = calculatedState
-
-            print("🔄 [RelationshipState] \(name)님과의 관계 상태 변경: \(oldState.rawValue) → \(calculatedState.rawValue) (점수: \(Int(currentScore)))")
-        } else {
-            // 상태 변경은 없지만 현재 점수를 로그로 출력
-            print("📊 [RelationshipState] \(name)님 관계 점수: \(Int(currentScore)) (\(calculatedState.rawValue)), 소홀함: \(isNeglected ? "예" : "아니오")")
-        }
-    }
-    
-    /// 관계 상태에 대한 종합적인 분석 정보를 반환
-    /// UI에서 관계 상태를 표시하거나 개선 방안을 제시할 때 사용
-    /// - Returns: 현재 점수, 상태, 분석 결과, 추천사항을 포함한 RelationshipAnalysis 객체
-    func getRelationshipAnalysis() -> RelationshipAnalysis {
-        let score = calculateRelationshipScore()
-        let now = Date()
-        let calendar = Calendar.current
-        
-        // 마지막 상호작용으로부터 경과된 일수 계산
-        let recentInteractionDate = [lastContact, lastMeal, lastMentoring]
-            .compactMap { $0 }
-            .max() ?? relationshipStartDate
-        
-        let daysSinceLastInteraction = calendar.dateComponents([.day], from: recentInteractionDate, to: now).day ?? 0
-        
-        // 분석 결과를 구조체로 반환
-        return RelationshipAnalysis(
-            currentScore: score,
-            currentState: calculateRelationshipState(),
-            daysSinceLastInteraction: daysSinceLastInteraction,
-            actionCompletionRate: calculateActionCompletionRate(),
-            criticalActionCompletionRate: calculateCriticalActionCompletionRate(),
-            recommendations: generateRecommendations()
-        )
-    }
-    
     /// 새로운 상호작용 기록 추가
     /// 다양한 상호작용 타입(멘토링, 식사, 연락 등)을 기록하고 기존 필드도 동기화
     /// - Parameters:
@@ -1319,17 +1043,6 @@ extension Person {
     }
 }
 
-
-/// 관계 분석 결과를 담는 구조체
-/// 관계 상태의 상세한 분석 정보와 개선 제안사항들을 포함
-struct RelationshipAnalysis {
-    let currentScore: Double                    // 현재 관계 점수 (0-100)
-    let currentState: RelationshipState         // 현재 관계 상태 (distant/warming/close)
-    let daysSinceLastInteraction: Int           // 마지막 상호작용으로부터 경과된 일수
-    let actionCompletionRate: Double            // 전체 액션 완료율 (0.0-1.0)
-    let criticalActionCompletionRate: Double    // Critical 액션 완료율 (0.0-1.0)
-    let recommendations: [String]               // 관계 개선을 위한 추천사항들
-}
 
 // MARK: - Timeline Support
 extension Person {

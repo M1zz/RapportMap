@@ -203,7 +203,7 @@ class ContactsManager: ObservableObject {
             }
             
             // 메모에 앱 정보 추가
-            contact.note = "RapportMap에서 추가됨 - 관계: \(person.state.localizedName)"
+            contact.note = "RapportMap에서 추가됨"
             
             let saveRequest = CNSaveRequest()
             saveRequest.add(contact, toContainerWithIdentifier: nil)
@@ -228,9 +228,9 @@ class ContactsManager: ObservableObject {
             
             let mutableContact = contact.mutableCopy() as! CNMutableContact
             
-            // 메모에 관계 상태 업데이트
+            // 메모에 RapportMap 정보 업데이트
             let currentNote = mutableContact.note
-            let rapportInfo = "RapportMap - 관계: \(person.state.localizedName), 마지막 연락: \(person.lastContact?.formatted(date: .abbreviated, time: .omitted) ?? "없음")"
+            let rapportInfo = "RapportMap - 마지막 연락: \(person.lastContact?.formatted(date: .abbreviated, time: .omitted) ?? "없음")"
             
             if currentNote.isEmpty {
                 mutableContact.note = rapportInfo
@@ -417,16 +417,16 @@ class ContactsManager: ObservableObject {
     }
     
     /// 연락처 선택 시 Person 생성을 위한 개선된 메서드
-    func createPersonFromContact(_ contact: CNContact, withRelationship relationship: RelationshipState = .distant) -> Person {
+    func createPersonFromContact(_ contact: CNContact) -> Person {
         let fullName = "\(contact.familyName)\(contact.givenName)".trimmingCharacters(in: .whitespaces)
         let name = fullName.isEmpty ? "이름 없음" : fullName
-        
+
         var contactInfo = ""
-        
+
         // 전화번호 우선 (모바일 > 기본 > 첫 번째)
         let mobilePhone = contact.phoneNumbers.first { $0.label == CNLabelPhoneNumberMobile }
         let mainPhone = contact.phoneNumbers.first { $0.label == CNLabelPhoneNumberMain }
-        
+
         if let mobile = mobilePhone {
             contactInfo = mobile.value.stringValue
         } else if let main = mainPhone {
@@ -438,14 +438,12 @@ class ContactsManager: ObservableObject {
         else if let email = contact.emailAddresses.first {
             contactInfo = email.value as String
         }
-        
+
         let person = Person(
             name: name,
             contact: contactInfo.isEmpty ? "연락처 없음" : contactInfo
         )
-        
-        person.state = relationship
-        
+
         return person
     }
     
@@ -630,10 +628,12 @@ struct ContactSelectionView: View {
                         Text("연락처: \(person.contact)")
                     }
                     
-                    HStack {
-                        Image(systemName: "heart")
-                            .foregroundColor(person.state.color)
-                        Text("관계: \(person.state.localizedName)")
+                    if person.isNeglected {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text("소홀한 관계")
+                        }
                     }
                 }
                 .padding()
@@ -665,10 +665,10 @@ struct ContactSelectionView: View {
         .sheet(isPresented: $showingContactPicker) {
             ContactPicker(isPresented: $showingContactPicker) { contact in
                 // 연락처가 선택되었을 때 Person 생성
-                let person = contactsManager.createPersonFromContact(contact, withRelationship: .distant)
+                let person = contactsManager.createPersonFromContact(contact)
                 selectedPerson = person
-                
-                print("✅ 새로운 Person 생성됨: \(person.name) (\(person.state.localizedName))")
+
+                print("✅ 새로운 Person 생성됨: \(person.name)")
             }
             .onAppear {
                 contactsManager.isContactPickerActive = true

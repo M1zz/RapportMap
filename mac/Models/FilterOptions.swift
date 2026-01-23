@@ -10,21 +10,18 @@ import SwiftUI
 enum SortOption: String, CaseIterable, Codable {
     case name = "이름순"
     case lastContact = "최근 접촉순"
-    case relationshipState = "관계 상태순"
     case incompleteActions = "미완료 액션순"
 
     var systemImage: String {
         switch self {
         case .name: return "textformat"
         case .lastContact: return "clock"
-        case .relationshipState: return "heart.fill"
         case .incompleteActions: return "checklist"
         }
     }
 }
 
 struct FilterOptions: Codable, Equatable {
-    var selectedStates: Set<RelationshipState> = []
     var showNeglectedOnly: Bool = false
     var showWithIncompleteActionsOnly: Bool = false
     var showWithCriticalActionsOnly: Bool = false
@@ -33,7 +30,6 @@ struct FilterOptions: Codable, Equatable {
     var sortOption: SortOption = .name
 
     var hasActiveFilters: Bool {
-        !selectedStates.isEmpty ||
         showNeglectedOnly ||
         showWithIncompleteActionsOnly ||
         showWithCriticalActionsOnly ||

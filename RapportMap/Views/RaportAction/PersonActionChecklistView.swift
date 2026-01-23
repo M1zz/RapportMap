@@ -760,14 +760,6 @@ struct PersonActionRow: View {
                             showingResultInput = true
                         }
                         
-                        // 관계 상태 업데이트 (안전하게)
-                        if let person = personAction.person {
-                            do {
-                                try RelationshipStateManager.shared.updatePersonRelationshipState(person, context: context)
-                            } catch {
-                                print("❌ 관계 상태 업데이트 실패: \(error)")
-                            }
-                        }
                     }
                 } label: {
                     Image(systemName: personAction.isCompleted ? "checkmark.circle.fill" : "circle")
@@ -1063,16 +1055,7 @@ struct ActionResultInputSheet: View {
     private func completeAction() {
         personAction.context = resultText
         personAction.markCompleted()
-        
-        // 관계 상태 업데이트 (안전하게)
-        if let person = personAction.person {
-            do {
-                try RelationshipStateManager.shared.updatePersonRelationshipState(person, context: context)
-            } catch {
-                print("❌ 관계 상태 업데이트 실패: \(error)")
-            }
-        }
-        
+
         do {
             try context.save()
         } catch {

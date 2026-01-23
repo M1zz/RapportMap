@@ -370,7 +370,7 @@ struct NodeView: View {
                     .shadow(radius: isSelected ? 8 : 4)
             } else {
                 Circle()
-                    .fill(gradientForState(node.person.state))
+                    .fill(Color.blue.gradient)
                     .frame(width: 60, height: 60)
                     .overlay(
                         Text(String(node.person.name.prefix(1)))
@@ -400,23 +400,6 @@ struct NodeView: View {
         }
     }
 
-    private func gradientForState(_ state: RelationshipState) -> LinearGradient {
-        let colors: [Color]
-        switch state {
-        case .distant:
-            colors = [.gray, .gray.opacity(0.7)]
-        case .warming:
-            colors = [.orange, .orange.opacity(0.7)]
-        case .close:
-            colors = [.red, .red.opacity(0.7)]
-        }
-
-        return LinearGradient(
-            colors: colors,
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
 }
 
 // MARK: - Selected Node Card
@@ -449,9 +432,11 @@ struct SelectedNodeCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(node.person.name)
                         .font(.headline)
-                    Text(node.person.state.rawValue)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if !node.person.contact.isEmpty {
+                        Text(node.person.contact)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Spacer()

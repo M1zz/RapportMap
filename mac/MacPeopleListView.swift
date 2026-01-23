@@ -23,13 +23,22 @@ struct MacPeopleListView: View {
         applyFilters(to: people)
     }
 
+    @State private var showingSettings = false
+
     var body: some View {
-        List(selection: $selectedPerson) {
-            ForEach(filteredPeople) { person in
-                MacPersonRow(person: person)
-                    .tag(person)
+        Group {
+            if people.isEmpty {
+                // 데이터가 전혀 없을 때 빈 화면
+                emptyDataView
+            } else {
+                List(selection: $selectedPerson) {
+                    ForEach(filteredPeople) { person in
+                        MacPersonRow(person: person)
+                            .tag(person)
+                    }
+                    .onDelete(perform: deletePeople)
+                }
             }
-            .onDelete(perform: deletePeople)
         }
         .navigationTitle("관계 지도")
         .searchable(text: $searchText, prompt: "이름이나 연락처로 검색")
@@ -81,6 +90,59 @@ struct MacPeopleListView: View {
         }
     }
 
+    // MARK: - Empty Data View
+
+    private var emptyDataView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+
+            Image(systemName: "person.crop.circle.badge.plus")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+
+            Text("아직 등록된 사람이 없습니다")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            Button {
+                showingAddPerson = true
+            } label: {
+                Label("새로운 사람 추가", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+
+            Divider()
+                .padding(.vertical, 8)
+
+            // iCloud 복원 안내
+            VStack(spacing: 8) {
+                Image(systemName: "icloud.and.arrow.down")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.blue)
+
+                Text("다른 기기에서 사용하던\n데이터가 있으신가요?")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button {
+                    showingSettings = true
+                } label: {
+                    Text("설정에서 iCloud 복원하기")
+                        .font(.caption)
+                }
+                .buttonStyle(.link)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+        .sheet(isPresented: $showingSettings) {
+            MacSettingsView()
+        }
+    }
+
     // MARK: - Filtering Logic
 
     private func applyFilters(to people: [Person]) -> [Person] {
@@ -94,14 +156,7 @@ struct MacPeopleListView: View {
             }
         }
 
-        // 2. 관계 상태 필터
-        if !filterOptions.selectedStates.isEmpty {
-            result = result.filter { person in
-                filterOptions.selectedStates.contains(person.state)
-            }
-        }
-
-        // 3. 소홀 상태 필터
+        // 2. 소홀 상태 필터
         if filterOptions.showNeglectedOnly {
             result = result.filter { $0.isNeglected }
         }
@@ -145,17 +200,6 @@ struct MacPeopleListView: View {
                 let date1 = person1.mostRecentInteractionDate ?? person1.relationshipStartDate
                 let date2 = person2.mostRecentInteractionDate ?? person2.relationshipStartDate
                 return date1 > date2 // 최근이 먼저
-            }
-        case .relationshipState:
-            result = result.sorted { person1, person2 in
-                // close > warming > distant 순서
-                let stateOrder: [RelationshipState: Int] = [.close: 0, .warming: 1, .distant: 2]
-                let order1 = stateOrder[person1.state] ?? 3
-                let order2 = stateOrder[person2.state] ?? 3
-                if order1 != order2 {
-                    return order1 < order2
-                }
-                return person1.name < person2.name // 같은 상태면 이름순
             }
         case .incompleteActions:
             result = result.sorted { person1, person2 in
@@ -201,6 +245,7 @@ struct MacPeopleListView: View {
 
 struct MacPersonRow: View {
     let person: Person
+    @State private var showingImagePreview = false
 
     // 날짜를 상대적인 시간으로 포맷팅
     private func formatRelativeDate(_ date: Date) -> String {
@@ -209,23 +254,58 @@ struct MacPersonRow: View {
         return formatter.localizedString(for: date, relativeTo: .now)
     }
 
+    @ViewBuilder
+    private var profileImageView: some View {
+        if let imageData = person.profileImageData,
+           let nsImage = NSImage(data: imageData) {
+            Image(nsImage: nsImage)
+                .resizable()
+                .scaledToFill()
+        } else {
+            Image(systemName: "person.circle.fill")
+                .resizable()
+                .foregroundStyle(.gray)
+        }
+    }
+
+    @ViewBuilder
+    private var profileImagePreview: some View {
+        VStack(spacing: 12) {
+            if let imageData = person.profileImageData,
+               let nsImage = NSImage(data: imageData) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 300, maxHeight: 300)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+
+            Text(person.name)
+                .font(.headline)
+
+            if !person.contact.isEmpty {
+                Text(person.contact)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+    }
+
     var body: some View {
         HStack(spacing: 12) {
-            // 프로필 이미지
-            Group {
-                if let imageData = person.profileImageData,
-                   let nsImage = NSImage(data: imageData) {
-                    Image(nsImage: nsImage)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    Image(systemName: "person.circle.fill")
-                        .resizable()
-                        .foregroundStyle(.gray)
+            // 프로필 이미지 (클릭하면 프리뷰)
+            profileImageView
+                .frame(width: 40, height: 40)
+                .clipShape(Circle())
+                .onTapGesture {
+                    if person.profileImageData != nil {
+                        showingImagePreview = true
+                    }
                 }
-            }
-            .frame(width: 40, height: 40)
-            .clipShape(Circle())
+                .popover(isPresented: $showingImagePreview, arrowEdge: .trailing) {
+                    profileImagePreview
+                }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(person.name)
@@ -256,15 +336,6 @@ struct MacPersonRow: View {
                     .foregroundStyle(.secondary)
                 }
 
-                // 관계 상태 배지
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(person.state.color)
-                        .frame(width: 8, height: 8)
-                    Text(person.state.localizedName)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
             }
 
             Spacer()

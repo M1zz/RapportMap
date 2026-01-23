@@ -510,10 +510,7 @@ struct EditInteractionRecordSheet: View {
                 break
             }
         }
-        
-        // 관계 상태 업데이트
-        person.updateRelationshipState()
-        
+
         do {
             try context.save()
             print("✅ 상호작용 기록 수정 완료")

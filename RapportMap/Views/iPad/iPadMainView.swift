@@ -84,9 +84,11 @@ struct iPadSidebarView: View {
                                     .font(.subheadline)
                                     .foregroundStyle(selectedPerson?.id == person.id ? .blue : .primary)
 
-                                Text(person.state.rawValue)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                if !person.contact.isEmpty {
+                                    Text(person.contact)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
 
                             Spacer()

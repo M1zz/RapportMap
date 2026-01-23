@@ -381,9 +381,6 @@ struct PersonDetailView: View {
 
         // 놓치면 안되는 것들
         criticalActionsSection
-
-        // 관계 상태
-        relationshipStatusSection
     }
 
     @ViewBuilder
@@ -874,12 +871,6 @@ struct PersonDetailView: View {
         }
     }
     
-    @ViewBuilder
-    private var relationshipStatusSection: some View {
-        Section("관계") {
-            RelationshipAnalysisCard(person: person)
-        }
-    }
     
     @ViewBuilder
     private var conversationStateSection: some View {
@@ -966,44 +957,17 @@ struct PersonDetailView: View {
     private func recordQuickInteraction(type: InteractionType) {
         // 새로운 InteractionRecord 생성
         person.addInteractionRecord(type: type, date: Date())
-        person.updateRelationshipState()
         try? context.save()
-        
+
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
-        
+
         // 편집 시트는 열지 않고 바로 저장
         print("✅ \(type.title) 빠른 기록 완료")
     }
-    
-    private func recalculateRelationshipState() {
-        do {
-            try RelationshipStateManager.shared.updatePersonRelationshipState(person, context: context)
-        } catch {
-            print("❌ 관계 상태 재계산 실패: \(error)")
-        }
-    }
 
     // MARK: - Computed Properties
-    
-    private var stateColor: Color {
-        switch person.state {
-        case .distant: return .blue
-        case .warming: return .orange
-        case .close: return .pink
-        }
-    }
-    
-    private var stateLabel: String { label(for: person.state) }
 
-    private func label(for state: RelationshipState) -> String {
-        switch state {
-        case .distant: return "멀어짐"
-        case .warming: return "따뜻해지는 중"
-        case .close: return "끈끈함"
-        }
-    }
-    
     private func calculateCompletionRate() -> Double? {
         guard !person.actions.isEmpty else { return nil }
         let completed = person.actions.filter { $0.isCompleted }.count

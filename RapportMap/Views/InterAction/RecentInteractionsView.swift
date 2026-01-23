@@ -115,8 +115,6 @@ struct RecentInteractionsView: View {
                                 newRecord.addPhoto(photoData)
                             }
 
-                            person.updateRelationshipState()
-
                             do {
                                 try context.save()
                                 print("✅ 새 상호작용 기록 생성: \(newRecord.id)")

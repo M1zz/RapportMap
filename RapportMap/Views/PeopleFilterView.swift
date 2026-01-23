@@ -37,28 +37,6 @@ struct PeopleFilterView: View {
                     }
                 }
 
-                Section("관계 상태") {
-                    ForEach(RelationshipState.allCases, id: \.self) { state in
-                        Toggle(isOn: Binding(
-                            get: { filterOptions.selectedStates.contains(state) },
-                            set: { isOn in
-                                if isOn {
-                                    filterOptions.selectedStates.insert(state)
-                                } else {
-                                    filterOptions.selectedStates.remove(state)
-                                }
-                            }
-                        )) {
-                            HStack {
-                                Circle()
-                                    .fill(state.color)
-                                    .frame(width: 12, height: 12)
-                                Text(state.localizedName)
-                            }
-                        }
-                    }
-                }
-                
                 Section("특별 상태") {
                     Toggle("소홀한 관계만", isOn: $filterOptions.showNeglectedOnly)
                     Toggle("미완료 액션이 있는 사람만", isOn: $filterOptions.showWithIncompleteActionsOnly)

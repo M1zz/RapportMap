@@ -50,11 +50,8 @@ struct QuickRecordSheet: View {
                         Text(person.name)
                             .font(.title2)
                             .fontWeight(.bold)
-                        
+
                         Spacer()
-                        
-                        Text(person.state.emoji)
-                            .font(.title)
                     }
                     .padding(.vertical, 4)
                 }
@@ -190,10 +187,7 @@ struct QuickRecordSheet: View {
         if hasContactDate {
             person.lastContact = lastContact
         }
-        
-        // 관계 상태 업데이트
-        person.updateRelationshipState()
-        
+
         // 저장
         try? context.save()
         

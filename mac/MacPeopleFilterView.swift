@@ -62,36 +62,6 @@ struct MacPeopleFilterView: View {
                         .padding()
                     }
 
-                    // 관계 상태 필터
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("관계 상태")
-                                .font(.headline)
-                                .foregroundStyle(.secondary)
-
-                            ForEach(RelationshipState.allCases, id: \.self) { state in
-                                Toggle(isOn: Binding(
-                                    get: { filterOptions.selectedStates.contains(state) },
-                                    set: { isOn in
-                                        if isOn {
-                                            filterOptions.selectedStates.insert(state)
-                                        } else {
-                                            filterOptions.selectedStates.remove(state)
-                                        }
-                                    }
-                                )) {
-                                    HStack {
-                                        Circle()
-                                            .fill(state.color)
-                                            .frame(width: 12, height: 12)
-                                        Text(state.localizedName)
-                                    }
-                                }
-                            }
-                        }
-                        .padding()
-                    }
-
                     // 특별 상태 필터
                     GroupBox {
                         VStack(alignment: .leading, spacing: 12) {
