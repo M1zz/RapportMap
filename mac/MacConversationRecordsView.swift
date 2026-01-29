@@ -180,6 +180,9 @@ struct MacConversationRecordsView: View {
         case .concern: return "이 사람이 가진 고민을 기록하세요..."
         case .question: return "이 사람에게 물어볼 질문을 기록하세요..."
         case .promise: return "이 사람과의 약속을 기록하세요..."
+        case .update: return "이 사람의 근황을 기록하세요..."
+        case .feedback: return "이 사람에게 받은 피드백을 기록하세요..."
+        case .achievement: return "이 사람의 성취나 좋은 소식을 기록하세요..."
         }
     }
 

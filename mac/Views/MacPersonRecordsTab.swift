@@ -252,7 +252,7 @@ struct MacPersonRecordsTab: View {
             type: selectedInteractionType,
             date: interactionDate,
             notes: interactionNotes.isEmpty ? nil : interactionNotes,
-            duration: interactionDuration,
+            duration: interactionDuration.map { TimeInterval($0) },
             location: interactionLocation.isEmpty ? nil : interactionLocation,
             relatedMeetingRecord: nil
         )
