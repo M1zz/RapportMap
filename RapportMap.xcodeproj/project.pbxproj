@@ -48,6 +48,11 @@
 			path = mac;
 			sourceTree = "<group>";
 		};
+		AB2CA9466A3E4745B70F2B0F /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -71,6 +76,7 @@
 		58E726542EB74F8B00053725 = {
 			isa = PBXGroup;
 			children = (
+				AB2CA9466A3E4745B70F2B0F /* Shared */,
 				58E7265F2EB74F8B00053725 /* RapportMap */,
 				9C61C3F22EE164EC00BC5930 /* mac */,
 				58E7265E2EB74F8B00053725 /* Products */,
@@ -104,6 +110,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				58E7265F2EB74F8B00053725 /* RapportMap */,
+				AB2CA9466A3E4745B70F2B0F /* Shared */,
 			);
 			name = RapportMap;
 			packageProductDependencies = (
@@ -126,6 +133,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				9C61C3F22EE164EC00BC5930 /* mac */,
+				AB2CA9466A3E4745B70F2B0F /* Shared */,
 			);
 			name = mac;
 			packageProductDependencies = (

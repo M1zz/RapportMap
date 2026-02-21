@@ -1,0 +1,173 @@
+//
+//  MacPeopleFilterView.swift
+//  mac
+//
+//  macOS용 필터 화면
+//
+
+import SwiftUI
+
+struct MacPeopleFilterView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var filterOptions: FilterOptions
+    let peopleCount: Int
+    let filteredCount: Int
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // 헤더
+            HStack {
+                Text("필터")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Spacer()
+                Button("완료") {
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding()
+            .background(Color(NSColor.controlBackgroundColor))
+
+            Divider()
+
+            // 메인 컨텐츠
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // 결과 카운트
+                    GroupBox {
+                        Text("전체 \(peopleCount)명 중 \(filteredCount)명 표시")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    // 정렬 옵션
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("정렬")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+
+                            Picker("정렬 기준", selection: $filterOptions.sortOption) {
+                                ForEach(SortOption.allCases, id: \.self) { option in
+                                    HStack {
+                                        Image(systemName: option.systemImage)
+                                        Text(option.rawValue)
+                                    }
+                                    .tag(option)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
+                        .padding()
+                    }
+
+                    // 특별 상태 필터
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("특별 상태")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+
+                            Toggle("소홀한 관계만", isOn: $filterOptions.showNeglectedOnly)
+                            Toggle("미완료 액션이 있는 사람만", isOn: $filterOptions.showWithIncompleteActionsOnly)
+                            Toggle("긴급 액션이 있는 사람만", isOn: $filterOptions.showWithCriticalActionsOnly)
+                        }
+                        .padding()
+                    }
+
+                    // 🆕 연락 안 한 기간 필터 (주요 기능!)
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "clock.badge.exclamationmark")
+                                    .foregroundStyle(.orange)
+                                Text("연락 안 한 기간")
+                                    .font(.headline)
+                            }
+                            
+                            Text("오래 연락 못한 사람을 찾아보세요")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            // 빠른 선택 버튼들
+                            HStack(spacing: 8) {
+                                ForEach(NoContactFilter.allCases, id: \.self) { filter in
+                                    Button {
+                                        filterOptions.noContactFilter = filter
+                                    } label: {
+                                        VStack(spacing: 4) {
+                                            Image(systemName: filter.icon)
+                                                .font(.title3)
+                                            Text(filter.rawValue)
+                                                .font(.caption)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 8)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(filterOptions.noContactFilter == filter ? filter.color.opacity(0.2) : Color.clear)
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .strokeBorder(filterOptions.noContactFilter == filter ? filter.color : Color.gray.opacity(0.3), lineWidth: 1)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(filterOptions.noContactFilter == filter ? filter.color : .secondary)
+                                }
+                            }
+                        }
+                        .padding()
+                    }
+                    
+                    // 마지막 접촉 필터 (최근 연락한 사람)
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("최근 연락한 사람")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+
+                            Picker("최근 접촉 기준", selection: $filterOptions.lastContactDays) {
+                                Text("전체").tag(nil as Int?)
+                                Text("1주일 이내").tag(7 as Int?)
+                                Text("2주일 이내").tag(14 as Int?)
+                                Text("1개월 이내").tag(30 as Int?)
+                                Text("3개월 이내").tag(90 as Int?)
+                            }
+                            .pickerStyle(.menu)
+
+                            if filterOptions.lastContactDays != nil {
+                                Toggle("접촉 기록 없는 사람 포함", isOn: $filterOptions.includeNeverContacted)
+                            }
+                        }
+                        .padding()
+                    }
+
+                    // 초기화 버튼
+                    Button {
+                        filterOptions = FilterOptions()
+                    } label: {
+                        HStack {
+                            Image(systemName: "arrow.counterclockwise")
+                            Text("필터 초기화")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .disabled(!filterOptions.hasActiveFilters)
+                    .padding(.top, 8)
+                }
+                .padding()
+            }
+        }
+        .frame(width: 400, height: 600)
+    }
+}
+
+#Preview {
+    MacPeopleFilterView(
+        filterOptions: .constant(FilterOptions()),
+        peopleCount: 10,
+        filteredCount: 5
+    )
+}
