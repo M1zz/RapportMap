@@ -18,19 +18,25 @@ struct RapportMapApp: App {
             PersonTag.self
         ])
 
+        // 새 데이터베이스 파일 경로 (v2 - 재설계 버전)
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dbFolder = appSupport.appendingPathComponent("RapportMapV2", isDirectory: true)
+        
+        // 폴더 생성
+        try? FileManager.default.createDirectory(at: dbFolder, withIntermediateDirectories: true)
+        
+        let dbURL = dbFolder.appendingPathComponent("rapportmap.store")
+        
         let modelConfiguration = ModelConfiguration(
             schema: schema,
-            isStoredInMemoryOnly: false,
+            url: dbURL,
             cloudKitDatabase: .none
         )
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
             print("✅ [App] ModelContainer 생성 성공")
-
-            if let url = container.configurations.first?.url {
-                print("📁 [App] 데이터베이스 경로: \(url.path)")
-            }
+            print("📁 [App] 데이터베이스 경로: \(dbURL.path)")
 
             return container
         } catch {
@@ -56,16 +62,26 @@ struct RapportMapApp: App {
 // MARK: - 메인 콘텐츠 뷰
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var context
+    
     var body: some View {
-        #if os(iOS)
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            iPadMainView()
-        } else {
-            PeopleListView()
+        Group {
+            #if os(iOS)
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                iPadMainView()
+            } else {
+                PeopleListView()
+            }
+            #else
+            MacMainView()
+            #endif
         }
-        #else
-        MacMainView()
-        #endif
+        .onAppear {
+            // 데모 데이터 생성 (DEBUG 모드에서만)
+            #if DEBUG
+            DemoDataSeeder.seedDemoData(context: context)
+            #endif
+        }
     }
 }
 

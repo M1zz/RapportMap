@@ -1,0 +1,92 @@
+/* 
+  Localizable.strings (English)
+  RapportMap
+*/
+
+// Navigation
+"관계 지도" = "Rapport Map";
+"이름 검색" = "Search";
+
+// Empty State
+"아직 아무도 없어요" = "No one here yet";
+"탐험할 관계를 추가해보세요" = "Add a relationship to explore";
+"첫 번째 사람 추가" = "Add First Person";
+
+// Person Row
+"개 영역 탐험" = "areas explored";
+"표면적" = "Surface";
+"개인적" = "Personal";
+"깊은" = "Deep";
+"내밀한" = "Intimate";
+
+// Person Detail
+"지도" = "Map";
+"발견들" = "Discoveries";
+"정보" = "Info";
+
+// Add Person
+"새로운 관계" = "New Relationship";
+"이름" = "Name";
+"연락처 (선택)" = "Contact (optional)";
+"메모 (선택)" = "Memo (optional)";
+"취소" = "Cancel";
+"추가" = "Add";
+
+// Map View
+"새로운 발견" = "New Discovery";
+
+// Territory Names
+"닉네임의 이유" = "Nickname Origin";
+"취미" = "Hobbies";
+"하는 일" = "Work";
+"고향" = "Hometown";
+"좋아하는 것" = "Favorites";
+"요즘 고민" = "Current Concerns";
+"목표" = "Goals";
+"일상" = "Daily Life";
+"취향" = "Taste";
+"가치관" = "Values";
+"인간관계" = "Relationships";
+"가족" = "Family";
+"어린 시절" = "Childhood";
+"전환점" = "Turning Point";
+"두려움" = "Fears";
+"후회" = "Regrets";
+"신념" = "Beliefs";
+"상처" = "Trauma";
+"비밀" = "Secrets";
+"약한 모습" = "Vulnerability";
+"진짜 나" = "True Self";
+"깊은 소망" = "Deep Desires";
+
+// Add Discovery
+"뭘 알게 됐나요?" = "What did you learn?";
+"어떤 상황에서? (선택)" = "In what situation? (optional)";
+"그때 느낌은?" = "How did you feel?";
+"특별한 발견" = "Significant Discovery";
+"저장" = "Save";
+"날짜" = "Date";
+
+// Emotions
+"놀라웠다" = "Surprised";
+"감동받았다" = "Touched";
+"이해하게 됐다" = "Understood";
+"가까워진 느낌" = "Felt Closer";
+"더 알고 싶다" = "Want to Know More";
+"따뜻해졌다" = "Felt Warm";
+"존경하게 됐다" = "Gained Respect";
+
+// Info
+"기본 정보" = "Basic Info";
+"관계 시작" = "Relationship Started";
+"함께한 기간" = "Time Together";
+"탐험 현황" = "Exploration Status";
+"현재 깊이" = "Current Depth";
+"탐험률" = "Progress";
+"탐험한 영역" = "Explored Areas";
+"미탐험 영역" = "Unexplored Areas";
+"다음 깊이로 진행" = "Advance to Next Depth";
+"발견 통계" = "Discovery Stats";
+"총 발견" = "Total Discoveries";
+"메모" = "Memo";
+"메모 없음" = "No memo";

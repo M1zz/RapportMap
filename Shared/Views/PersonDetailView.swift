@@ -15,9 +15,12 @@ struct PersonDetailView: View {
     
     var body: some View {
         VStack(spacing: 0) {
+            // 프로필 카드
+            PersonProfileCard(person: person)
+
             // 탭 선택
             tabPicker
-            
+
             // 탭 콘텐츠
             TabView(selection: $selectedTab) {
                 PersonMapView(person: person)
