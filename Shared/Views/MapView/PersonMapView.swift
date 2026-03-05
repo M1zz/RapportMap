@@ -44,7 +44,7 @@ struct PersonMapView: View {
     @State private var showingAddDiscovery = false
     @State private var showingDiscoveryDetail: Discovery?
 
-    @State private var scale: CGFloat = 1.2
+    @State private var scale: CGFloat = 1.0
     @State private var offset: CGSize = .zero
     @State private var lastOffset: CGSize = .zero
 

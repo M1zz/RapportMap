@@ -15,27 +15,35 @@ struct PersonDetailView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // 프로필 카드
-            PersonProfileCard(person: person)
-
             // 탭 선택
             tabPicker
 
+            // 프로필 카드
+            PersonProfileCard(person: person)
+
             // 탭 콘텐츠
+            #if os(macOS)
+            Group {
+                switch selectedTab {
+                case .map: PersonMapView(person: person)
+                case .timeline: DiscoveryTimelineView(person: person)
+                case .info: PersonInfoView(person: person)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            #else
             TabView(selection: $selectedTab) {
                 PersonMapView(person: person)
                     .tag(DetailTab.map)
-                
                 DiscoveryTimelineView(person: person)
                     .tag(DetailTab.timeline)
-                
                 PersonInfoView(person: person)
                     .tag(DetailTab.info)
             }
-            #if os(iOS)
             .tabViewStyle(.page(indexDisplayMode: .never))
             #endif
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .navigationTitle(person.name)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -61,6 +69,7 @@ struct PersonDetailView: View {
             }
         }
         .pickerStyle(.segmented)
+        .labelsHidden()
         .padding()
     }
 }

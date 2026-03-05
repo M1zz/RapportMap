@@ -248,6 +248,7 @@ struct MacPersonDetailView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .padding()
             
             // 탭 콘텐츠
