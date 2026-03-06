@@ -25,16 +25,23 @@ final class Person {
     
     // MARK: - 메모
     var memo: String?                       // 간단한 메모
-    
+
+    // MARK: - Numbers 공유 문서
+    var numbersSharedURL: String?           // iCloud Numbers 공유 링크
+
     // MARK: - 관계 (Relationships)
-    
+
     /// 이 사람에 대한 발견들
     @Relationship(deleteRule: .cascade, inverse: \Discovery.person)
     var discoveries: [Discovery] = []
-    
+
     /// 이 사람에게 할당된 태그들
     @Relationship(deleteRule: .nullify, inverse: \PersonTag.people)
     var tags: [PersonTag] = []
+
+    /// 이 사람과의 활동 기록들
+    @Relationship(deleteRule: .cascade, inverse: \ActivityRecord.person)
+    var activities: [ActivityRecord] = []
     
     // MARK: - Computed Properties
     

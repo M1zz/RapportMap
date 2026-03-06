@@ -22,9 +22,10 @@ struct PersonDetailView: View {
             #if os(macOS)
             Group {
                 switch selectedTab {
-                case .map: PersonMapView(person: person)
+                case .map:      PersonMapView(person: person)
                 case .timeline: DiscoveryTimelineView(person: person)
-                case .info: PersonInfoView(person: person)
+                case .records:  ActivityRecordsView(person: person)
+                case .info:     PersonInfoView(person: person)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -34,6 +35,8 @@ struct PersonDetailView: View {
                     .tag(DetailTab.map)
                 DiscoveryTimelineView(person: person)
                     .tag(DetailTab.timeline)
+                ActivityRecordsView(person: person)
+                    .tag(DetailTab.records)
                 PersonInfoView(person: person)
                     .tag(DetailTab.info)
             }
@@ -65,21 +68,24 @@ struct PersonDetailView: View {
 enum DetailTab: String, CaseIterable {
     case map
     case timeline
+    case records
     case info
-    
+
     var title: String {
         switch self {
-        case .map: return "지도"
+        case .map:      return "지도"
         case .timeline: return "발견들"
-        case .info: return "정보"
+        case .records:  return "기록"
+        case .info:     return "정보"
         }
     }
-    
+
     var icon: String {
         switch self {
-        case .map: return "map"
+        case .map:      return "map"
         case .timeline: return "clock"
-        case .info: return "info.circle"
+        case .records:  return "list.bullet.clipboard"
+        case .info:     return "info.circle"
         }
     }
 }
@@ -433,6 +439,396 @@ struct FilterChipButton: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - 기록 뷰
+
+struct ActivityRecordsView: View {
+    @Environment(\.modelContext) private var context
+    @Bindable var person: Person
+
+    @State private var showingAddActivity = false
+    @State private var showingNumbersInput = false
+    @State private var numbersURLInput = ""
+
+    private var sortedActivities: [ActivityRecord] {
+        person.activities.sorted { $0.date > $1.date }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                numbersSection
+                activitiesSection
+            }
+            .padding()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .sheet(isPresented: $showingAddActivity) {
+            AddActivitySheet(person: person)
+        }
+    }
+
+    // MARK: - Numbers 공유 문서 섹션
+
+    private var numbersSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "tablecells")
+                    .foregroundStyle(.green)
+                Text("Numbers 공유 문서")
+                    .font(.headline)
+                Spacer()
+            }
+
+            if let urlString = person.numbersSharedURL, !urlString.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(urlString)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    HStack(spacing: 10) {
+                        if let url = URL(string: urlString) {
+                            Link(destination: url) {
+                                Label("Numbers에서 열기", systemImage: "arrow.up.right.square")
+                                    .font(.subheadline)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.green.opacity(0.15))
+                                    .foregroundStyle(.green)
+                                    .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Button(role: .destructive) {
+                            person.numbersSharedURL = nil
+                            try? context.save()
+                        } label: {
+                            Label("제거", systemImage: "trash")
+                                .font(.subheadline)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.red.opacity(0.1))
+                                .foregroundStyle(.red)
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding()
+                .background(Color.green.opacity(0.06))
+                .cornerRadius(10)
+            } else {
+                Button {
+                    numbersURLInput = ""
+                    showingNumbersInput = true
+                } label: {
+                    HStack {
+                        Image(systemName: "plus.circle")
+                        Text("공유 링크 추가")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .background(Color.secondary.opacity(0.08))
+                    .cornerRadius(10)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .sheet(isPresented: $showingNumbersInput) {
+            NumbersLinkInputSheet(urlInput: $numbersURLInput) { url in
+                person.numbersSharedURL = url
+                try? context.save()
+            }
+        }
+    }
+
+    // MARK: - 활동 기록 섹션
+
+    private var activitiesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "list.bullet.clipboard")
+                    .foregroundStyle(.blue)
+                Text("활동 기록")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    showingAddActivity = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.blue)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // 빠른 추가 버튼
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(ActivityType.allCases) { type in
+                        QuickAddActivityButton(type: type) {
+                            let record = ActivityRecord(type: type)
+                            record.person = person
+                            person.activities.append(record)
+                            try? context.save()
+                        }
+                    }
+                }
+            }
+
+            if sortedActivities.isEmpty {
+                ContentUnavailableView {
+                    Label("기록이 없어요", systemImage: "list.bullet.clipboard")
+                } description: {
+                    Text("위 버튼으로 빠르게 기록하거나 + 버튼으로 상세 기록을 추가해보세요")
+                }
+                .frame(minHeight: 200)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(sortedActivities) { record in
+                        ActivityRecordRow(record: record) {
+                            context.delete(record)
+                            try? context.save()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - 빠른 추가 버튼
+
+private struct QuickAddActivityButton: View {
+    let type: ActivityType
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Text(type.emoji)
+                    .font(.title2)
+                Text(type.title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 60, height: 60)
+            .background(type.color.opacity(0.1))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(type.color.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - 활동 기록 행
+
+private struct ActivityRecordRow: View {
+    let record: ActivityRecord
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(record.type.emoji)
+                .font(.title2)
+                .frame(width: 44, height: 44)
+                .background(record.type.color.opacity(0.1))
+                .cornerRadius(10)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(record.type.title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                if !record.notes.isEmpty {
+                    Text(record.notes)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer()
+
+            Text(record.date.formatted(date: .abbreviated, time: .omitted))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+                    .font(.caption)
+                    .foregroundStyle(.red.opacity(0.7))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.05))
+        .cornerRadius(10)
+    }
+}
+
+// MARK: - 활동 추가 시트
+
+struct AddActivitySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+
+    let person: Person
+
+    @State private var selectedType: ActivityType = .meeting
+    @State private var notes = ""
+    @State private var date = Date()
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("활동 종류") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(ActivityType.allCases) { type in
+                                Button {
+                                    selectedType = type
+                                } label: {
+                                    VStack(spacing: 4) {
+                                        Text(type.emoji)
+                                            .font(.title)
+                                        Text(type.title)
+                                            .font(.caption)
+                                    }
+                                    .frame(width: 70, height: 70)
+                                    .background(selectedType == type ? type.color.opacity(0.2) : Color.secondary.opacity(0.08))
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(selectedType == type ? type.color : Color.clear, lineWidth: 2)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+
+                Section("날짜") {
+                    DatePicker("날짜", selection: $date, displayedComponents: .date)
+                        .labelsHidden()
+                }
+
+                Section("메모 (선택)") {
+                    TextField("무슨 일이 있었나요?", text: $notes, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+            }
+            #if os(macOS)
+            .formStyle(.grouped)
+            #endif
+            .navigationTitle("활동 기록 추가")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        let record = ActivityRecord(date: date, type: selectedType, notes: notes)
+                        record.person = person
+                        person.activities.append(record)
+                        try? context.save()
+                        dismiss()
+                    }
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(width: 420, height: 480)
+        #endif
+    }
+}
+
+// MARK: - Numbers 링크 입력 시트
+
+struct NumbersLinkInputSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var urlInput: String
+    let onSave: (String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                Image(systemName: "tablecells.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.green)
+
+                Text("Numbers 공유 링크를 붙여넣으세요")
+                    .font(.headline)
+
+                Text("Numbers 앱에서 공유 > 공동 작업 초대 > 링크 복사로 링크를 얻을 수 있어요")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+
+                TextField("https://www.icloud.com/numbers/...", text: $urlInput, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(3)
+                    .padding(.horizontal)
+                #if os(macOS)
+                    .frame(minWidth: 300)
+                #endif
+
+                Button {
+                    #if os(macOS)
+                    if let string = NSPasteboard.general.string(forType: .string) {
+                        urlInput = string
+                    }
+                    #else
+                    if let string = UIPasteboard.general.string {
+                        urlInput = string
+                    }
+                    #endif
+                } label: {
+                    Label("클립보드에서 붙여넣기", systemImage: "doc.on.clipboard")
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+            }
+            .padding(.top, 24)
+            .navigationTitle("공유 링크 추가")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        if !urlInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            onSave(urlInput.trimmingCharacters(in: .whitespacesAndNewlines))
+                        }
+                        dismiss()
+                    }
+                    .disabled(urlInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(width: 400, height: 350)
+        #endif
     }
 }
 

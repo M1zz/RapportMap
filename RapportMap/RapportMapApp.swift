@@ -15,7 +15,8 @@ struct RapportMapApp: App {
         let schema = Schema([
             Person.self,
             Discovery.self,
-            PersonTag.self
+            PersonTag.self,
+            ActivityRecord.self
         ])
 
         // 새 데이터베이스 파일 경로 (v2 - 재설계 버전)
