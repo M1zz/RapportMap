@@ -124,6 +124,14 @@ struct MacPeopleListSidebar: View {
         .sheet(isPresented: $showingAddPerson) {
             MacAddPersonSheet()
         }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                Divider()
+                MyProfileSidebarRow()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            }
+        }
     }
     
     private func deletePeople(at offsets: IndexSet) {
@@ -138,13 +146,24 @@ struct MacPeopleListSidebar: View {
 
 struct MacPersonRow: View {
     let person: Person
-    
+    @State private var showingFullScreenPhoto = false
+
     var body: some View {
         HStack(spacing: 12) {
-            // 달 아이콘
-            Text(person.progressMoonPhase)
-                .font(.title2)
-            
+            // 프로필 사진 (탭하면 크게 보기)
+            Button {
+                if person.profileImageData != nil { showingFullScreenPhoto = true }
+            } label: {
+                personAvatar
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(person.depth.color.opacity(0.4), lineWidth: 1.5))
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showingFullScreenPhoto) {
+                FullScreenPhotoView(imageData: person.profileImageData, isPresented: $showingFullScreenPhoto)
+            }
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(person.name)
                     .font(.headline)
@@ -174,6 +193,19 @@ struct MacPersonRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var personAvatar: some View {
+        if let data = person.profileImageData, let img = NSImage(data: data) {
+            Image(nsImage: img).resizable().scaledToFill()
+        } else {
+            ZStack {
+                person.depth.color.opacity(0.15)
+                Image(systemName: "person.fill")
+                    .foregroundStyle(person.depth.color)
+            }
+        }
     }
 }
 

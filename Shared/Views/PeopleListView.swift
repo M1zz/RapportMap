@@ -98,13 +98,22 @@ struct PeopleListView: View {
 
 struct PersonRow: View {
     let person: Person
-    
+    @State private var showingFullScreenPhoto = false
+
     var body: some View {
         HStack(spacing: 16) {
             // 프로필 + 달
             ZStack(alignment: .bottomTrailing) {
-                profileImage
-                
+                Button {
+                    if person.profileImageData != nil { showingFullScreenPhoto = true }
+                } label: {
+                    profileImage
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $showingFullScreenPhoto) {
+                    FullScreenPhotoView(imageData: person.profileImageData, isPresented: $showingFullScreenPhoto)
+                }
+
                 Text(person.progressMoonPhase)
                     .font(.system(size: 14))
                     .offset(x: 4, y: 4)

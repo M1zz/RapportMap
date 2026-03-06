@@ -7,6 +7,11 @@
 
 import SwiftUI
 import SwiftData
+#if os(iOS)
+import PhotosUI
+#else
+import UniformTypeIdentifiers
+#endif
 
 struct PersonDetailView: View {
     @Bindable var person: Person
@@ -262,12 +267,46 @@ struct DiscoveryTimelineRow: View {
 struct PersonInfoView: View {
     @Environment(\.modelContext) private var context
     @Bindable var person: Person
-    
+
     @State private var isEditingMemo = false
     @State private var showingDepthSheet = false
-    
+    @State private var showingFullScreenPhoto = false
+
+    #if os(iOS)
+    @State private var selectedPhoto: PhotosPickerItem?
+    #endif
+
     var body: some View {
         Form {
+            // 프로필 사진 섹션
+            Section {
+                HStack {
+                    Spacer()
+                    ZStack(alignment: .bottomTrailing) {
+                        avatarView
+                            .frame(width: 80, height: 80)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(person.depth.color.opacity(0.5), lineWidth: 2))
+                            .onTapGesture {
+                                if person.profileImageData != nil { showingFullScreenPhoto = true }
+                            }
+                        photoBadge
+                    }
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+            }
+            #if os(iOS)
+            .onChange(of: selectedPhoto) { _, item in
+                Task {
+                    if let data = try? await item?.loadTransferable(type: Data.self) {
+                        person.profileImageData = data
+                        try? context.save()
+                    }
+                }
+            }
+            #endif
+
             // 기본 정보
             Section("기본 정보") {
                 LabeledContent("이름", value: person.name)
@@ -354,7 +393,60 @@ struct PersonInfoView: View {
         .sheet(isPresented: $showingDepthSheet) {
             DepthSettingSheet(person: person)
         }
+        .sheet(isPresented: $showingFullScreenPhoto) {
+            FullScreenPhotoView(imageData: person.profileImageData, isPresented: $showingFullScreenPhoto)
+        }
     }
+
+    @ViewBuilder
+    private var avatarView: some View {
+        if let data = person.profileImageData {
+            #if os(iOS)
+            if let img = UIImage(data: data) { Image(uiImage: img).resizable().scaledToFill() }
+            else { defaultAvatar }
+            #else
+            if let img = NSImage(data: data) { Image(nsImage: img).resizable().scaledToFill() }
+            else { defaultAvatar }
+            #endif
+        } else { defaultAvatar }
+    }
+
+    private var defaultAvatar: some View {
+        ZStack {
+            LinearGradient(colors: [Color(hex: "d4a82a"), Color(hex: "8a6010")],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            Text(person.progressMoonPhase).font(.system(size: 34))
+        }
+    }
+
+    @ViewBuilder
+    private var photoBadge: some View {
+        #if os(iOS)
+        PhotosPicker(selection: $selectedPhoto, matching: .images) { badgeCircle }
+            .buttonStyle(.plain)
+        #else
+        Button { pickPhotoMac() } label: { badgeCircle }.buttonStyle(.plain)
+        #endif
+    }
+
+    private var badgeCircle: some View {
+        Circle().fill(person.depth.color)
+            .frame(width: 24, height: 24)
+            .overlay(Image(systemName: "camera.fill").font(.system(size: 11)).foregroundStyle(.white))
+    }
+
+    #if os(macOS)
+    private func pickPhotoMac() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType.image]
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url,
+           let data = try? Data(contentsOf: url) {
+            person.profileImageData = data
+            try? context.save()
+        }
+    }
+    #endif
 }
 
 // MARK: - 깊이 설정 시트
