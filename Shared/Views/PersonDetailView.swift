@@ -18,9 +18,6 @@ struct PersonDetailView: View {
             // 탭 선택
             tabPicker
 
-            // 프로필 카드
-            PersonProfileCard(person: person)
-
             // 탭 콘텐츠
             #if os(macOS)
             Group {
@@ -30,7 +27,7 @@ struct PersonDetailView: View {
                 case .info: PersonInfoView(person: person)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             #else
             TabView(selection: $selectedTab) {
                 PersonMapView(person: person)
@@ -48,17 +45,6 @@ struct PersonDetailView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 2) {
-                    Text(person.name)
-                        .font(.headline)
-                    Text("\(person.progressMoonPhase) \(person.depth.title)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
     }
     
     private var tabPicker: some View {
@@ -124,7 +110,7 @@ struct DiscoveryTimelineView: View {
         VStack(spacing: 0) {
             // 필터
             filterSection
-            
+
             if person.discoveries.isEmpty {
                 emptyState
             } else if filteredDiscoveries.isEmpty {
@@ -133,6 +119,7 @@ struct DiscoveryTimelineView: View {
                 timelineList
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
     
     private var filterSection: some View {
