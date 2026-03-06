@@ -342,6 +342,9 @@ struct PersonInfoView: View {
                 }
             }
         }
+        #if os(macOS)
+        .formStyle(.grouped)
+        #endif
         .sheet(isPresented: $showingDepthSheet) {
             DepthSettingSheet(person: person)
         }
