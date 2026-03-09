@@ -42,6 +42,10 @@ final class Person {
     /// 이 사람과의 활동 기록들
     @Relationship(deleteRule: .cascade, inverse: \ActivityRecord.person)
     var activities: [ActivityRecord] = []
+
+    /// 이 사람에 대한 자유 메모들
+    @Relationship(deleteRule: .cascade, inverse: \PersonNote.person)
+    var notes: [PersonNote] = []
     
     // MARK: - Computed Properties
     

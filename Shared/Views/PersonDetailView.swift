@@ -29,6 +29,7 @@ struct PersonDetailView: View {
                 switch selectedTab {
                 case .map:      PersonMapView(person: person)
                 case .timeline: DiscoveryTimelineView(person: person)
+                case .memo:     PersonMemoView(person: person)
                 case .records:  ActivityRecordsView(person: person)
                 case .info:     PersonInfoView(person: person)
                 }
@@ -40,6 +41,8 @@ struct PersonDetailView: View {
                     .tag(DetailTab.map)
                 DiscoveryTimelineView(person: person)
                     .tag(DetailTab.timeline)
+                PersonMemoView(person: person)
+                    .tag(DetailTab.memo)
                 ActivityRecordsView(person: person)
                     .tag(DetailTab.records)
                 PersonInfoView(person: person)
@@ -73,6 +76,7 @@ struct PersonDetailView: View {
 enum DetailTab: String, CaseIterable {
     case map
     case timeline
+    case memo
     case records
     case info
 
@@ -80,6 +84,7 @@ enum DetailTab: String, CaseIterable {
         switch self {
         case .map:      return "지도"
         case .timeline: return "발견들"
+        case .memo:     return "메모"
         case .records:  return "기록"
         case .info:     return "정보"
         }
@@ -89,6 +94,7 @@ enum DetailTab: String, CaseIterable {
         switch self {
         case .map:      return "map"
         case .timeline: return "clock"
+        case .memo:     return "note.text"
         case .records:  return "list.bullet.clipboard"
         case .info:     return "info.circle"
         }

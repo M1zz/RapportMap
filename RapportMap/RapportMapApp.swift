@@ -16,7 +16,8 @@ struct RapportMapApp: App {
             Person.self,
             Discovery.self,
             PersonTag.self,
-            ActivityRecord.self
+            ActivityRecord.self,
+            PersonNote.self
         ])
 
         // 새 데이터베이스 파일 경로 (v2 - 재설계 버전)

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 #if os(iOS)
 import PhotosUI
 #else
@@ -52,12 +53,12 @@ struct MyProfileSidebarRow: View {
                         .fontWeight(.medium)
                     Text("나")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Color.secondary)
             }
             .padding(.vertical, 6)
         }
@@ -88,7 +89,7 @@ struct MyProfileSidebarRow: View {
         ZStack {
             Color.accentColor.opacity(0.15)
             Image(systemName: "person.fill")
-                .foregroundStyle(.accentColor)
+                .foregroundStyle(Color.accentColor)
         }
     }
 }
@@ -202,7 +203,7 @@ struct MyProfileSheet: View {
             Color.accentColor.opacity(0.15)
             Image(systemName: "person.fill")
                 .font(.system(size: 40))
-                .foregroundStyle(.accentColor)
+                .foregroundStyle(Color.accentColor)
         }
     }
 
