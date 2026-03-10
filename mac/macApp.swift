@@ -15,28 +15,19 @@ struct macApp: App {
         let schema = Schema([
             Person.self,
             Discovery.self,
-            PersonTag.self
+            PersonTag.self,
+            ActivityRecord.self,
+            PersonNote.self
         ])
 
-        // 새 데이터베이스 파일 경로 (v2 - 재설계 버전)
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dbFolder = appSupport.appendingPathComponent("RapportMapV2", isDirectory: true)
-        
-        // 폴더 생성
-        try? FileManager.default.createDirectory(at: dbFolder, withIntermediateDirectories: true)
-        
-        let dbURL = dbFolder.appendingPathComponent("rapportmap.store")
-        
         let modelConfiguration = ModelConfiguration(
             schema: schema,
-            url: dbURL,
-            cloudKitDatabase: .none
+            cloudKitDatabase: .automatic
         )
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            print("✅ [macOS] ModelContainer 생성 성공")
-            print("📁 [macOS] 데이터베이스 경로: \(dbURL.path)")
+            print("✅ [macOS] ModelContainer 생성 성공 (CloudKit 동기화 활성화)")
 
             return container
         } catch {
@@ -268,39 +259,56 @@ struct MacAddPersonSheet: View {
 
 struct MacPersonDetailView: View {
     @Bindable var person: Person
-    
+
     @State private var selectedTab: MacDetailTab = .map
-    
+
     var body: some View {
         VStack(spacing: 0) {
-            // 탭 선택
-            Picker("탭", selection: $selectedTab) {
+            // 탭 선택 (커스텀 HStack - segmented picker는 5개 이상 잘림)
+            HStack(spacing: 4) {
                 ForEach(MacDetailTab.allCases, id: \.self) { tab in
-                    Text(tab.title).tag(tab)
+                    Button {
+                        selectedTab = tab
+                    } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 14))
+                            Text(tab.title)
+                                .font(.system(size: 10))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(selectedTab == tab ? Color.accentColor.opacity(0.15) : Color.clear)
+                        .foregroundStyle(selectedTab == tab ? Color.accentColor : Color.secondary)
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding()
-            
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+            .background(Color(NSColor.controlBackgroundColor))
+
+            Divider()
+
             // 탭 콘텐츠
-            switch selectedTab {
-            case .map:
-                PersonMapView(person: person)
-            case .timeline:
-                DiscoveryTimelineView(person: person)
-            case .info:
-                PersonInfoView(person: person)
+            Group {
+                switch selectedTab {
+                case .map:      PersonMapView(person: person)
+                case .timeline: DiscoveryTimelineView(person: person)
+                case .memo:     PersonMemoView(person: person)
+                case .records:  ActivityRecordsView(person: person)
+                case .info:     PersonInfoView(person: person)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle(person.name)
         .toolbar {
             ToolbarItem(placement: .automatic) {
-                VStack(spacing: 2) {
-                    Text("\(person.progressMoonPhase) \(person.depth.title)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("\(person.progressMoonPhase) \(person.depth.title)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -309,13 +317,27 @@ struct MacPersonDetailView: View {
 enum MacDetailTab: String, CaseIterable {
     case map
     case timeline
+    case memo
+    case records
     case info
-    
+
     var title: String {
         switch self {
-        case .map: return "지도"
+        case .map:      return "지도"
         case .timeline: return "발견들"
-        case .info: return "정보"
+        case .memo:     return "메모"
+        case .records:  return "기록"
+        case .info:     return "정보"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .map:      return "map"
+        case .timeline: return "clock"
+        case .memo:     return "note.text"
+        case .records:  return "list.bullet.clipboard"
+        case .info:     return "info.circle"
         }
     }
 }
