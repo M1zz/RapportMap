@@ -20,25 +20,14 @@ struct RapportMapApp: App {
             PersonNote.self
         ])
 
-        // 새 데이터베이스 파일 경로 (v2 - 재설계 버전)
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dbFolder = appSupport.appendingPathComponent("RapportMapV2", isDirectory: true)
-        
-        // 폴더 생성
-        try? FileManager.default.createDirectory(at: dbFolder, withIntermediateDirectories: true)
-        
-        let dbURL = dbFolder.appendingPathComponent("rapportmap.store")
-        
         let modelConfiguration = ModelConfiguration(
             schema: schema,
-            url: dbURL,
-            cloudKitDatabase: .none
+            cloudKitDatabase: .automatic
         )
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            print("✅ [App] ModelContainer 생성 성공")
-            print("📁 [App] 데이터베이스 경로: \(dbURL.path)")
+            print("✅ [App] ModelContainer 생성 성공 (CloudKit 동기화 활성화)")
 
             return container
         } catch {
