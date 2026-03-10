@@ -59,15 +59,29 @@ struct PersonDetailView: View {
     }
     
     private var tabPicker: some View {
-        Picker("탭", selection: $selectedTab) {
+        HStack(spacing: 4) {
             ForEach(DetailTab.allCases, id: \.self) { tab in
-                Image(systemName: tab.icon)
-                    .tag(tab)
+                Button {
+                    selectedTab = tab
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 14))
+                        Text(tab.title)
+                            .font(.system(size: 10))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(selectedTab == tab ? Color.accentColor.opacity(0.15) : Color.clear)
+                    .foregroundStyle(selectedTab == tab ? Color.accentColor : Color.secondary)
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .padding()
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+        .background(Color.secondaryBackground)
     }
 }
 
