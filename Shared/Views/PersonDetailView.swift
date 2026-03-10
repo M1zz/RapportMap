@@ -61,7 +61,7 @@ struct PersonDetailView: View {
     private var tabPicker: some View {
         Picker("탭", selection: $selectedTab) {
             ForEach(DetailTab.allCases, id: \.self) { tab in
-                Label(tab.title, systemImage: tab.icon)
+                Image(systemName: tab.icon)
                     .tag(tab)
             }
         }
