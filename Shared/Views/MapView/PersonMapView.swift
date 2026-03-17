@@ -199,7 +199,6 @@ struct PersonMapView: View {
 
     private func handleTerritoryTap(_ territory: Territory) {
         selectedTerritory = territory
-        guard person.canAccess(territory) else { return }
         if person.hasExplored(territory) {
             if let discovery = person.discoveries(for: territory).first {
                 showingDiscoveryDetail = discovery
@@ -575,13 +574,7 @@ struct TerritoryNode: View {
                 .frame(width: nodeSize, height: nodeSize)
 
             VStack(spacing: 3 * scale) {
-                if isAccessible {
-                    Text(territory.emoji).font(.system(size: fontSize))
-                } else {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 16 * scale))
-                        .foregroundStyle(.secondary)
-                }
+                Text(territory.emoji).font(.system(size: fontSize))
 
                 Text(territory.title)
                     .font(.system(size: labelSize, weight: .medium))
