@@ -11,13 +11,13 @@ import SwiftUI
 
 @Model
 final class Discovery {
-    var id: UUID
-    var date: Date                          // 알게 된 날짜
-    var createdAt: Date                     // 기록 생성일
-    
+    var id: UUID = UUID()
+    var date: Date = Date()                 // 알게 된 날짜
+    var createdAt: Date = Date()            // 기록 생성일
+
     // 핵심 정보
-    var territoryRawValue: String           // 어떤 영역?
-    var content: String                     // 알게 된 내용
+    var territoryRawValue: String = "nickname" // 어떤 영역?
+    var content: String = ""               // 알게 된 내용
     
     // 부가 정보 (선택)
     var context: String?                    // 어떤 상황에서 알게 됐나

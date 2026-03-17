@@ -14,10 +14,14 @@ import UniformTypeIdentifiers
 #endif
 
 struct PersonDetailView: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Bindable var person: Person
-    
+
     @State private var selectedTab: DetailTab = .map
-    
+    @State private var showingMeetingSheet = false
+    @State private var showingDeleteAlert = false
+
     var body: some View {
         VStack(spacing: 0) {
             // 탭 선택
@@ -56,10 +60,22 @@ struct PersonDetailView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showingMeetingSheet = true
+                } label: {
+                    Label("만남 시작", systemImage: "person.2.wave.2")
+                }
+            }
+        }
+        .sheet(isPresented: $showingMeetingSheet) {
+            MeetingSessionSheet(person: person)
+        }
     }
     
     private var tabPicker: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             ForEach(DetailTab.allCases, id: \.self) { tab in
                 Button {
                     selectedTab = tab
@@ -70,17 +86,16 @@ struct PersonDetailView: View {
                         Text(tab.title)
                             .font(.system(size: 10))
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(selectedTab == tab ? Color.accentColor.opacity(0.15) : Color.clear)
-                    .foregroundStyle(selectedTab == tab ? Color.accentColor : Color.secondary)
-                    .cornerRadius(8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, minHeight: 54)
+                .background(selectedTab == tab ? Color.accentColor.opacity(0.15) : Color.clear)
+                .foregroundStyle(selectedTab == tab ? Color.accentColor : Color.secondary)
+                .contentShape(Rectangle())
             }
+
         }
-        .padding(.horizontal)
-        .padding(.vertical, 6)
         .background(Color.secondaryBackground)
     }
 }
@@ -142,7 +157,7 @@ struct DiscoveryTimelineView: View {
             // 필터
             filterSection
 
-            if person.discoveries.isEmpty {
+            if (person.discoveries ?? []).isEmpty {
                 emptyState
             } else if filteredDiscoveries.isEmpty {
                 filteredEmptyState
@@ -286,11 +301,13 @@ struct DiscoveryTimelineRow: View {
 
 struct PersonInfoView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Bindable var person: Person
 
     @State private var isEditingMemo = false
     @State private var showingDepthSheet = false
     @State private var showingFullScreenPhoto = false
+    @State private var showingDeleteAlert = false
 
     #if os(iOS)
     @State private var selectedPhoto: PhotosPickerItem?
@@ -406,6 +423,20 @@ struct PersonInfoView: View {
                         }
                 }
             }
+
+            // 삭제
+            Section {
+                Button(role: .destructive) {
+                    showingDeleteAlert = true
+                } label: {
+                    HStack {
+                        Spacer()
+                        Label("\(person.name) 삭제", systemImage: "trash")
+                            .foregroundStyle(.red)
+                        Spacer()
+                    }
+                }
+            }
         }
         #if os(macOS)
         .formStyle(.grouped)
@@ -415,6 +446,16 @@ struct PersonInfoView: View {
         }
         .sheet(isPresented: $showingFullScreenPhoto) {
             FullScreenPhotoView(imageData: person.profileImageData, isPresented: $showingFullScreenPhoto)
+        }
+        .alert("\(person.name)을(를) 삭제할까요?", isPresented: $showingDeleteAlert) {
+            Button("삭제", role: .destructive) {
+                context.delete(person)
+                try? context.save()
+                dismiss()
+            }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("이 사람의 모든 발견, 메모, 기록이 함께 삭제됩니다.")
         }
     }
 
@@ -565,7 +606,7 @@ struct ActivityRecordsView: View {
     @State private var numbersURLInput = ""
 
     private var sortedActivities: [ActivityRecord] {
-        person.activities.sorted { $0.date > $1.date }
+        (person.activities ?? []).sorted { $0.date > $1.date }
     }
 
     var body: some View {
@@ -689,7 +730,7 @@ struct ActivityRecordsView: View {
                         QuickAddActivityButton(type: type) {
                             let record = ActivityRecord(type: type)
                             record.person = person
-                            person.activities.append(record)
+                            person.activities = (person.activities ?? []) + [record]
                             try? context.save()
                         }
                     }
@@ -857,7 +898,7 @@ struct AddActivitySheet: View {
                     Button("저장") {
                         let record = ActivityRecord(date: date, type: selectedType, notes: notes)
                         record.person = person
-                        person.activities.append(record)
+                        person.activities = (person.activities ?? []) + [record]
                         try? context.save()
                         dismiss()
                     }
@@ -941,6 +982,113 @@ struct NumbersLinkInputSheet: View {
         #if os(macOS)
         .frame(width: 400, height: 350)
         #endif
+    }
+}
+
+// MARK: - 만남 시작 시트
+
+struct MeetingSessionSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var person: Person
+
+    @State private var selectedType: ActivityType = .meeting
+    @State private var date: Date = Date()
+    @State private var activityNotes: String = ""
+    @State private var memoText: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                // 어떤 만남인지
+                Section("어떤 만남이었나요?") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(ActivityType.allCases) { type in
+                                Button {
+                                    selectedType = type
+                                } label: {
+                                    VStack(spacing: 4) {
+                                        Text(type.emoji)
+                                            .font(.title2)
+                                        Text(type.title)
+                                            .font(.caption)
+                                    }
+                                    .frame(width: 64, height: 64)
+                                    .background(selectedType == type ? type.color.opacity(0.2) : Color.secondary.opacity(0.08))
+                                    .cornerRadius(10)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(selectedType == type ? type.color : Color.clear, lineWidth: 2)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+
+                Section("날짜") {
+                    DatePicker("날짜", selection: $date, displayedComponents: .date)
+                        .labelsHidden()
+                }
+
+                // 오늘 있었던 일 요약
+                Section("오늘 있었던 일 (선택)") {
+                    TextField("어디서 만났나요? 무슨 얘기를 했나요?", text: $activityNotes, axis: .vertical)
+                        .lineLimit(2...4)
+                }
+
+                // 알게 된 것들 (파편 메모)
+                Section {
+                    TextField("\"포항 출신\", \"커피 싫어함\", \"누나 한 명\" 처럼 짧게 적어보세요", text: $memoText, axis: .vertical)
+                        .lineLimit(3...6)
+                } header: {
+                    Text("알게 된 것들 (선택)")
+                } footer: {
+                    Text("나중에 지도에서 영역별로 정리할 수 있어요")
+                }
+            }
+            #if os(macOS)
+            .formStyle(.grouped)
+            #endif
+            .navigationTitle("\(person.name)와의 만남")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("기록하기") { save() }
+                        .fontWeight(.semibold)
+                        .disabled(selectedType == .meeting && activityNotes.isEmpty && memoText.isEmpty)
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(width: 460, height: 540)
+        #endif
+    }
+
+    private func save() {
+        // 활동 기록 저장
+        let record = ActivityRecord(date: date, type: selectedType, notes: activityNotes)
+        record.person = person
+        person.activities = (person.activities ?? []) + [record]
+
+        // 메모 저장 (입력이 있을 때만)
+        let trimmedMemo = memoText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedMemo.isEmpty {
+            let note = PersonNote(content: trimmedMemo, date: date)
+            note.person = person
+            person.notes = (person.notes ?? []) + [note]
+        }
+
+        try? context.save()
+        dismiss()
     }
 }
 

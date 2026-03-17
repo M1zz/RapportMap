@@ -18,6 +18,8 @@ struct MacPeopleListView: View {
     @State private var showingAllCalendar = false
     @State private var searchText = ""
     @State private var filterOptions = FilterOptions.load()
+    @State private var personToDelete: Person?
+    @State private var showingDeleteConfirmation = false
 
     private var filteredPeople: [Person] {
         applyFilters(to: people)
@@ -35,6 +37,14 @@ struct MacPeopleListView: View {
                     ForEach(filteredPeople) { person in
                         MacPersonRow(person: person)
                             .tag(person)
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    personToDelete = person
+                                    showingDeleteConfirmation = true
+                                } label: {
+                                    Label("삭제", systemImage: "trash")
+                                }
+                            }
                     }
                     .onDelete(perform: deletePeople)
                 }
@@ -87,6 +97,22 @@ struct MacPeopleListView: View {
         .onChange(of: filterOptions) { oldValue, newValue in
             // 필터가 변경될 때마다 자동 저장
             newValue.save()
+        }
+        .alert(
+            "\(personToDelete?.name ?? "")을(를) 삭제할까요?",
+            isPresented: $showingDeleteConfirmation
+        ) {
+            Button("삭제", role: .destructive) {
+                if let person = personToDelete {
+                    if selectedPerson?.id == person.id { selectedPerson = nil }
+                    context.delete(person)
+                    try? context.save()
+                }
+                personToDelete = nil
+            }
+            Button("취소", role: .cancel) { personToDelete = nil }
+        } message: {
+            Text("이 사람의 모든 발견, 메모, 기록이 함께 삭제됩니다.")
         }
     }
 
@@ -178,7 +204,7 @@ struct MacPeopleListView: View {
         // 3. 태그 필터
         if !filterOptions.selectedTagIDs.isEmpty {
             result = result.filter { person in
-                let personTagIDs = Set(person.tags.map { $0.id })
+                let personTagIDs = Set((person.tags ?? []).map { $0.id })
                 let selectedIDs = Set(filterOptions.selectedTagIDs)
                 
                 switch filterOptions.tagFilterMode {

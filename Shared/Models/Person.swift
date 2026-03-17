@@ -12,40 +12,40 @@ import SwiftUI
 @Model
 final class Person {
     // MARK: - 기본 정보
-    var id: UUID
-    var name: String
-    var contact: String                     // 연락처 (선택)
-    
+    var id: UUID = UUID()
+    var name: String = ""
+    var contact: String = ""               // 연락처 (선택)
+
     @Attribute(.externalStorage)
     var profileImageData: Data?             // 프로필 사진
-    
+
     // MARK: - 관계 정보
-    var relationshipStartDate: Date         // 관계 시작일
-    var depthRawValue: Int                  // 현재 관계 깊이
-    
+    var relationshipStartDate: Date = Date() // 관계 시작일
+    var depthRawValue: Int = 0              // 현재 관계 깊이
+
     // MARK: - 메모
     var memo: String?                       // 간단한 메모
 
     // MARK: - Numbers 공유 문서
     var numbersSharedURL: String?           // iCloud Numbers 공유 링크
 
-    // MARK: - 관계 (Relationships)
+    // MARK: - 관계 (Relationships) — CloudKit requires optional to-many relationships
 
     /// 이 사람에 대한 발견들
     @Relationship(deleteRule: .cascade, inverse: \Discovery.person)
-    var discoveries: [Discovery] = []
+    var discoveries: [Discovery]?
 
     /// 이 사람에게 할당된 태그들
     @Relationship(deleteRule: .nullify, inverse: \PersonTag.people)
-    var tags: [PersonTag] = []
+    var tags: [PersonTag]?
 
     /// 이 사람과의 활동 기록들
     @Relationship(deleteRule: .cascade, inverse: \ActivityRecord.person)
-    var activities: [ActivityRecord] = []
+    var activities: [ActivityRecord]?
 
     /// 이 사람에 대한 자유 메모들
     @Relationship(deleteRule: .cascade, inverse: \PersonNote.person)
-    var notes: [PersonNote] = []
+    var notes: [PersonNote]?
     
     // MARK: - Computed Properties
     
@@ -63,7 +63,7 @@ final class Person {
     
     init(
         id: UUID = UUID(),
-        name: String,
+        name: String = "",
         contact: String = "",
         profileImageData: Data? = nil,
         relationshipStartDate: Date = Date(),
@@ -86,7 +86,7 @@ extension Person {
     
     /// 탐험한 영역들
     var exploredTerritories: Set<Territory> {
-        Set(discoveries.map { $0.territory })
+        Set((discoveries ?? []).map { $0.territory })
     }
     
     /// 현재 깊이에서 탐험 가능한 영역들
@@ -161,39 +161,39 @@ extension Person {
             isSignificant: isSignificant
         )
         discovery.person = self
-        discoveries.append(discovery)
+        discoveries = (discoveries ?? []) + [discovery]
         return discovery
     }
     
     /// 특정 영역의 발견들 (최신순)
     func discoveries(for territory: Territory) -> [Discovery] {
-        discoveries
+        (discoveries ?? [])
             .filter { $0.territory == territory }
             .sorted { $0.date > $1.date }
     }
-    
+
     /// 특정 깊이의 발견들 (최신순)
     func discoveries(at depth: RelationshipDepth) -> [Discovery] {
-        discoveries
+        (discoveries ?? [])
             .filter { $0.depth == depth }
             .sorted { $0.date > $1.date }
     }
-    
+
     /// 모든 발견 (최신순)
     var sortedDiscoveries: [Discovery] {
-        discoveries.sorted { $0.date > $1.date }
+        (discoveries ?? []).sorted { $0.date > $1.date }
     }
-    
+
     /// 중요한 발견들
     var significantDiscoveries: [Discovery] {
-        discoveries
+        (discoveries ?? [])
             .filter { $0.isSignificant }
             .sorted { $0.date > $1.date }
     }
-    
+
     /// 최근 발견들 (7일 이내)
     var recentDiscoveries: [Discovery] {
-        discoveries
+        (discoveries ?? [])
             .filter { $0.isRecent }
             .sorted { $0.date > $1.date }
     }
@@ -239,9 +239,10 @@ extension Person {
     
     /// 발견 통계
     var discoveryStats: DiscoveryStats {
-        DiscoveryStats(
-            total: discoveries.count,
-            byDepth: Dictionary(grouping: discoveries, by: { $0.depth })
+        let allDiscoveries = discoveries ?? []
+        return DiscoveryStats(
+            total: allDiscoveries.count,
+            byDepth: Dictionary(grouping: allDiscoveries, by: { $0.depth })
                 .mapValues { $0.count },
             significant: significantDiscoveries.count,
             recent: recentDiscoveries.count

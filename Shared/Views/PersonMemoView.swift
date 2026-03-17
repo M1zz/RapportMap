@@ -16,7 +16,7 @@ struct PersonMemoView: View {
     @State private var isFocused = false
 
     private var sortedNotes: [PersonNote] {
-        person.notes.sorted { $0.date > $1.date }
+        (person.notes ?? []).sorted { $0.date > $1.date }
     }
 
     var body: some View {
@@ -27,7 +27,7 @@ struct PersonMemoView: View {
             Divider()
 
             // 메모 목록
-            if person.notes.isEmpty {
+            if (person.notes ?? []).isEmpty {
                 emptyState
             } else {
                 notesList
@@ -122,13 +122,13 @@ struct PersonMemoView: View {
         guard !text.isEmpty else { return }
         let note = PersonNote(content: text)
         note.person = person
-        person.notes.append(note)
+        person.notes = (person.notes ?? []) + [note]
         try? context.save()
         newNoteText = ""
     }
 
     private func deleteNote(_ note: PersonNote) {
-        person.notes.removeAll { $0.id == note.id }
+        person.notes = person.notes?.filter { $0.id != note.id }
         context.delete(note)
         try? context.save()
     }

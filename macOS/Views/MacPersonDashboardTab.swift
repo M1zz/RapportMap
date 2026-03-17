@@ -150,8 +150,8 @@ struct MacPersonDashboardTab: View {
                         }
                         
                         // 태그
-                        if !person.tags.isEmpty {
-                            MacTagsCard(tags: person.tags)
+                        if !(person.tags ?? []).isEmpty {
+                            MacTagsCard(tags: person.tags ?? [])
                         }
                     }
                     .frame(maxWidth: .infinity)

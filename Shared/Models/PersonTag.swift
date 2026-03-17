@@ -17,19 +17,19 @@ import SwiftUI
 final class PersonTag {
     // MARK: - Properties
     
-    var id: UUID
-    var name: String                    // "1기", "개발", "위험"
-    var color: String                   // 색상 hex (예: "#FF5733")
+    var id: UUID = UUID()
+    var name: String = ""              // "1기", "개발", "위험"
+    var color: String = "#007AFF"      // 색상 hex (예: "#FF5733")
     var icon: String?                   // SF Symbol 이름 (예: "star.fill")
-    var order: Int                      // 정렬 순서
-    var createdDate: Date
-    var category: TagCategory           // 태그 카테고리 (기수, 상태, 분야 등)
-    
+    var order: Int = 0                  // 정렬 순서
+    var createdDate: Date = Date()
+    var category: TagCategory = TagCategory.custom // 태그 카테고리 (기수, 상태, 분야 등)
+
     // MARK: - Relationships
-    
-    /// 이 태그가 붙은 사람들 (Many-to-Many)
+
+    /// 이 태그가 붙은 사람들 (Many-to-Many) — CloudKit requires optional to-many relationships
     @Relationship(deleteRule: .nullify)
-    var people: [Person] = []
+    var people: [Person]?
     
     // MARK: - Init
     

@@ -10,14 +10,14 @@ import SwiftData
 
 @Model
 final class PersonNote {
-    var id: UUID
-    var date: Date
-    var content: String
+    var id: UUID = UUID()
+    var date: Date = Date()
+    var content: String = ""
 
     @Relationship(deleteRule: .nullify)
     var person: Person?
 
-    init(content: String, date: Date = Date()) {
+    init(content: String = "", date: Date = Date()) {
         self.id = UUID()
         self.date = date
         self.content = content

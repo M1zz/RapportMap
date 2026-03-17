@@ -17,6 +17,7 @@ struct MacPersonDetailView: View {
     @State private var selectedTab = 0
     @State private var showingImagePicker = false
     @State private var showingBadgeDetails = false
+    @State private var showingDeleteAlert = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -76,6 +77,15 @@ struct MacPersonDetailView: View {
             BadgeDetailsPopover(person: person, selectedTab: $selectedTab)
                 .frame(width: 350)
         }
+        .alert("\(person.name)을(를) 삭제할까요?", isPresented: $showingDeleteAlert) {
+            Button("삭제", role: .destructive) {
+                context.delete(person)
+                try? context.save()
+            }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("이 사람의 모든 발견, 메모, 기록이 함께 삭제됩니다.")
+        }
     }
 
     private var personHeader: some View {
@@ -129,6 +139,19 @@ struct MacPersonDetailView: View {
             }
 
             Spacer()
+
+            // 삭제 버튼
+            Button(role: .destructive) {
+                showingDeleteAlert = true
+            } label: {
+                Image(systemName: "trash")
+                    .foregroundStyle(.red)
+                    .padding(8)
+                    .background(Color.red.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .help("삭제")
 
             // 배지 섹션 (탭 가능)
             HStack(spacing: 16) {

@@ -13,15 +13,15 @@ import SwiftUI
 
 @Model
 final class ActivityRecord {
-    var id: UUID
-    var date: Date
-    var typeRawValue: String
-    var notes: String
+    var id: UUID = UUID()
+    var date: Date = Date()
+    var typeRawValue: String = ActivityType.other.rawValue
+    var notes: String = ""
 
     @Relationship(deleteRule: .nullify)
     var person: Person?
 
-    init(date: Date = Date(), type: ActivityType, notes: String = "") {
+    init(date: Date = Date(), type: ActivityType = .other, notes: String = "") {
         self.id = UUID()
         self.date = date
         self.typeRawValue = type.rawValue

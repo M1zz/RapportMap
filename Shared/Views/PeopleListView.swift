@@ -15,6 +15,8 @@ struct PeopleListView: View {
     @State private var searchText = ""
     @State private var showingAddPerson = false
     @State private var selectedPerson: Person?
+    @State private var personToDelete: Person?
+    @State private var showingDeleteConfirmation = false
     
     private var filteredPeople: [Person] {
         if searchText.isEmpty {
@@ -49,6 +51,22 @@ struct PeopleListView: View {
             .navigationDestination(item: $selectedPerson) { person in
                 PersonDetailView(person: person)
             }
+            .confirmationDialog(
+                "\(personToDelete?.name ?? "")을(를) 삭제할까요?",
+                isPresented: $showingDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("삭제", role: .destructive) {
+                    if let person = personToDelete {
+                        context.delete(person)
+                        try? context.save()
+                    }
+                    personToDelete = nil
+                }
+                Button("취소", role: .cancel) { personToDelete = nil }
+            } message: {
+                Text("이 사람의 모든 발견, 메모, 기록이 함께 삭제됩니다.")
+            }
         }
     }
     
@@ -79,18 +97,17 @@ struct PeopleListView: View {
                     .onTapGesture {
                         selectedPerson = person
                     }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            personToDelete = person
+                            showingDeleteConfirmation = true
+                        } label: {
+                            Label("삭제", systemImage: "trash")
+                        }
+                    }
             }
-            .onDelete(perform: deletePeople)
         }
         .listStyle(.plain)
-    }
-    
-    private func deletePeople(at offsets: IndexSet) {
-        for index in offsets {
-            let person = filteredPeople[index]
-            context.delete(person)
-        }
-        try? context.save()
     }
 }
 
