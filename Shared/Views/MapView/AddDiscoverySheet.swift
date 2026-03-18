@@ -208,7 +208,12 @@ struct AddDiscoverySheet: View {
         
         discovery.person = person
         context.insert(discovery)
-        
+
+        // 깊이 자동 진행: 현재 깊이의 영역 절반 이상 탐색 시 다음 단계로
+        if person.canAdvanceDepth {
+            person.advanceDepth()
+        }
+
         do {
             try context.save()
             dismiss()
