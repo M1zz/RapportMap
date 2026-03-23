@@ -46,6 +46,10 @@ final class Person {
     /// 이 사람에 대한 자유 메모들
     @Relationship(deleteRule: .cascade, inverse: \PersonNote.person)
     var notes: [PersonNote]?
+
+    /// 여러 명이 함께한 그룹 이벤트들
+    @Relationship(deleteRule: .nullify, inverse: \GroupEvent.participants)
+    var groupEvents: [GroupEvent]?
     
     // MARK: - Computed Properties
     

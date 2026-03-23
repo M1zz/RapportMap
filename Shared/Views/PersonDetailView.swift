@@ -602,6 +602,7 @@ struct ActivityRecordsView: View {
     @Bindable var person: Person
 
     @State private var showingAddActivity = false
+    @State private var showingGroupEvent = false
     @State private var showingNumbersInput = false
     @State private var numbersURLInput = ""
 
@@ -609,10 +610,15 @@ struct ActivityRecordsView: View {
         (person.activities ?? []).sorted { $0.date > $1.date }
     }
 
+    private var sortedGroupEvents: [GroupEvent] {
+        (person.groupEvents ?? []).sorted { $0.date > $1.date }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
                 numbersSection
+                groupEventsSection
                 activitiesSection
             }
             .padding()
@@ -620,6 +626,9 @@ struct ActivityRecordsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .sheet(isPresented: $showingAddActivity) {
             AddActivitySheet(person: person)
+        }
+        .sheet(isPresented: $showingGroupEvent) {
+            GroupEventSheet(person: person)
         }
     }
 
@@ -699,6 +708,57 @@ struct ActivityRecordsView: View {
             NumbersLinkInputSheet(urlInput: $numbersURLInput) { url in
                 person.numbersSharedURL = url
                 try? context.save()
+            }
+        }
+    }
+
+    // MARK: - 그룹 이벤트 섹션
+
+    private var groupEventsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "person.2.fill")
+                    .foregroundStyle(.cyan)
+                Text("함께한 이벤트")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    showingGroupEvent = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.cyan)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if sortedGroupEvents.isEmpty {
+                Button {
+                    showingGroupEvent = true
+                } label: {
+                    HStack {
+                        Image(systemName: "airplane")
+                        Text("여행, 식사 등 함께한 이벤트 기록")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .background(Color.cyan.opacity(0.08))
+                    .cornerRadius(10)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(sortedGroupEvents) { event in
+                        GroupEventRow(event: event) {
+                            context.delete(event)
+                            try? context.save()
+                        }
+                    }
+                }
             }
         }
     }
