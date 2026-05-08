@@ -18,7 +18,9 @@ struct RapportMapApp: App {
             PersonTag.self,
             ActivityRecord.self,
             PersonNote.self,
-            GroupEvent.self
+            GroupEvent.self,
+            PersonSnapshot.self,
+            MentoringSession.self
         ])
 
         let modelConfiguration = ModelConfiguration(

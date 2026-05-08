@@ -18,7 +18,7 @@ final class GroupEvent {
     var endDate: Date?
     var notes: String = ""
 
-    @Relationship(deleteRule: .nullify, inverse: \Person.groupEvents)
+    @Relationship(deleteRule: .nullify)
     var participants: [Person]?
 
     var type: ActivityType {

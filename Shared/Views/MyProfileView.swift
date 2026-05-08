@@ -49,15 +49,15 @@ struct MyProfileSidebarRow: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(manager.name.isEmpty ? "내 프로필" : manager.name)
-                        .font(.subheadline)
+                        .font(.body)
                         .fontWeight(.medium)
                     Text("나")
-                        .font(.caption2)
+                        .font(.body)
                         .foregroundStyle(Color.secondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.caption2)
+                    .font(.body)
                     .foregroundStyle(Color.secondary)
             }
             .padding(.vertical, 6)
@@ -127,7 +127,7 @@ struct MyProfileSheet: View {
                 // 이름
                 VStack(alignment: .leading, spacing: 6) {
                     Text("이름")
-                        .font(.caption)
+                        .font(.body)
                         .foregroundStyle(.secondary)
                     TextField("내 이름", text: $nameInput)
                         .textFieldStyle(.roundedBorder)
@@ -141,7 +141,7 @@ struct MyProfileSheet: View {
                         manager.imageData = nil
                     } label: {
                         Label("사진 제거", systemImage: "trash")
-                            .font(.caption)
+                            .font(.body)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.red)

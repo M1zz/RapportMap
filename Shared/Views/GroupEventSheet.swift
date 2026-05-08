@@ -47,7 +47,7 @@ struct GroupEventSheet: View {
                                         Text(type.emoji)
                                             .font(.title)
                                         Text(type.title)
-                                            .font(.caption)
+                                            .font(.body)
                                     }
                                     .frame(width: 70, height: 70)
                                     .background(selectedType == type ? type.color.opacity(0.2) : Color.secondary.opacity(0.08))
@@ -79,7 +79,7 @@ struct GroupEventSheet: View {
                     if allPeople.isEmpty {
                         Text("등록된 사람이 없습니다")
                             .foregroundStyle(.secondary)
-                            .font(.subheadline)
+                            .font(.body)
                     } else {
                         ForEach(allPeople) { person in
                             PersonPickerRow(
@@ -187,20 +187,13 @@ private struct PersonPickerRow: View {
         .buttonStyle(.plain)
     }
 
-    @ViewBuilder
     private func platformImage(from data: Data) -> Image? {
         #if os(iOS)
-        if let ui = UIImage(data: data) {
-            Image(uiImage: ui)
-        } else {
-            nil
-        }
+        if let ui = UIImage(data: data) { return Image(uiImage: ui) }
+        return nil
         #else
-        if let ns = NSImage(data: data) {
-            Image(nsImage: ns)
-        } else {
-            nil
-        }
+        if let ns = NSImage(data: data) { return Image(nsImage: ns) }
+        return nil
         #endif
     }
 }
@@ -236,20 +229,20 @@ struct GroupEventRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(event.title)
-                    .font(.subheadline)
+                    .font(.body)
                     .fontWeight(.medium)
 
                 HStack(spacing: 4) {
                     Image(systemName: "person.2")
-                        .font(.caption2)
+                        .font(.body)
                     Text(participantNames)
-                        .font(.caption)
+                        .font(.body)
                 }
                 .foregroundStyle(.secondary)
 
                 if !event.notes.isEmpty {
                     Text(event.notes)
-                        .font(.caption)
+                        .font(.body)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -259,12 +252,12 @@ struct GroupEventRow: View {
 
             VStack(alignment: .trailing, spacing: 4) {
                 Text(dateText)
-                    .font(.caption)
+                    .font(.body)
                     .foregroundStyle(.secondary)
 
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
-                        .font(.caption)
+                        .font(.body)
                         .foregroundStyle(.red.opacity(0.7))
                 }
                 .buttonStyle(.plain)

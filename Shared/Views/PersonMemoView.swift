@@ -78,7 +78,7 @@ struct PersonMemoView: View {
                         }
                     } header: {
                         Text(dateKey)
-                            .font(.caption)
+                            .font(.body)
                             .fontWeight(.semibold)
                             .foregroundStyle(.secondary)
                             .padding(.top, 8)
@@ -168,20 +168,20 @@ private struct NoteRow: View {
                 }
 
                 Text(note.date.formatted(.dateTime.hour().minute()))
-                    .font(.caption2)
+                    .font(.body)
                     .foregroundStyle(.tertiary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if isEditing {
                 Button("완료") { commitEdit() }
-                    .font(.caption)
+                    .font(.body)
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.accentColor)
             } else {
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "xmark")
-                        .font(.caption2)
+                        .font(.body)
                         .foregroundStyle(Color.secondary.opacity(0.5))
                 }
                 .buttonStyle(.plain)

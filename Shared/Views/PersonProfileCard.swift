@@ -39,7 +39,7 @@ struct PersonProfileCard: View {
                 HStack(spacing: 6) {
                     Text(person.depth.icon)
                     Text(person.depth.title)
-                        .font(.subheadline)
+                        .font(.body)
                         .foregroundStyle(person.depth.color)
                 }
 
@@ -48,7 +48,7 @@ struct PersonProfileCard: View {
                         .tint(person.depth.color)
                         .frame(width: 100)
                     Text("\(exploredCount)/\(totalTerritories) 탐험")
-                        .font(.caption)
+                        .font(.body)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -214,7 +214,7 @@ struct FullScreenPhotoView: View {
             VStack {
                 Spacer()
                 Text("탭하면 닫힙니다")
-                    .font(.caption)
+                    .font(.body)
                     .foregroundStyle(.white.opacity(0.6))
                     .padding(.bottom, 40)
             }

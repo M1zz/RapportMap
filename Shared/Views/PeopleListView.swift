@@ -17,12 +17,17 @@ struct PeopleListView: View {
     @State private var selectedPerson: Person?
     @State private var personToDelete: Person?
     @State private var showingDeleteConfirmation = false
-    
+    @State private var sortByAttention = false
+
     private var filteredPeople: [Person] {
-        if searchText.isEmpty {
-            return people
+        let base = searchText.isEmpty
+            ? Array(people)
+            : people.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        guard sortByAttention else { return base }
+        return base.sorted { lhs, rhs in
+            if lhs.needsAttention != rhs.needsAttention { return lhs.needsAttention }
+            return (lhs.daysSinceLastContact ?? 0) > (rhs.daysSinceLastContact ?? 0)
         }
-        return people.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
     
     var body: some View {
@@ -42,6 +47,17 @@ struct PeopleListView: View {
                         showingAddPerson = true
                     } label: {
                         Image(systemName: "plus")
+                    }
+                }
+                ToolbarItem(placement: .secondaryAction) {
+                    Button {
+                        sortByAttention.toggle()
+                    } label: {
+                        Label(
+                            sortByAttention ? "이름순 정렬" : "주의 필요 먼저",
+                            systemImage: sortByAttention ? "bell.fill" : "bell"
+                        )
+                        .foregroundStyle(sortByAttention ? .orange : .secondary)
                     }
                 }
             }
@@ -132,43 +148,52 @@ struct PersonRow: View {
                 }
 
                 Text(person.progressMoonPhase)
-                    .font(.system(size: 14))
+                    .font(.system(size: 17))
                     .offset(x: 4, y: 4)
             }
             
             // 정보
             VStack(alignment: .leading, spacing: 6) {
                 Text(person.name)
-                    .font(.headline)
-                
+                    .font(.title3).fontWeight(.semibold)
+
                 // 진행률 바
                 HStack(spacing: 8) {
                     ProgressView(value: person.totalExplorationProgress)
                         .tint(person.depth.color)
                         .frame(width: 100)
-                    
                     Text("\(Int(person.totalExplorationProgress * 100))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.body).foregroundStyle(.secondary)
                 }
-                
+
                 // 요약
                 Text("\(person.exploredTerritories.count)개 영역 탐험 • \(person.depth.title)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.body).foregroundStyle(.secondary)
+
+                // 마지막 만남
+                HStack(spacing: 4) {
+                    Image(systemName: "clock")
+                        .font(.caption)
+                    Text(person.lastContactRelativeText)
+                        .font(.caption)
+                }
+                .foregroundStyle(person.needsAttention ? Color.orange : Color.secondary)
             }
-            
+
             Spacer()
-            
-            // 미탐험 알림
-            if !person.unexploredTerritories.isEmpty {
-                VStack {
+
+            // 주의 필요 + 미탐험 알림
+            VStack(spacing: 4) {
+                if person.needsAttention {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.orange)
+                }
+                if !person.unexploredTerritories.isEmpty {
                     Text("\(person.unexploredTerritories.count)")
-                        .font(.caption2)
-                        .fontWeight(.bold)
+                        .font(.body).fontWeight(.bold)
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(person.depth.color)
                         .clipShape(Capsule())
                 }

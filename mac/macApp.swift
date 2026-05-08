@@ -17,7 +17,10 @@ struct macApp: App {
             Discovery.self,
             PersonTag.self,
             ActivityRecord.self,
-            PersonNote.self
+            PersonNote.self,
+            GroupEvent.self,
+            PersonSnapshot.self,
+            MentoringSession.self
         ])
 
         let modelConfiguration = ModelConfiguration(
@@ -158,29 +161,39 @@ struct MacPersonRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(person.name)
                     .font(.headline)
-                
+
                 HStack(spacing: 8) {
                     ProgressView(value: person.totalExplorationProgress)
                         .frame(width: 60)
-                    
                     Text("\(Int(person.totalExplorationProgress * 100))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(.secondary)
                 }
+
+                // 마지막 만남
+                HStack(spacing: 3) {
+                    Image(systemName: "clock").font(.system(size: 10))
+                    Text(person.lastContactRelativeText).font(.caption2)
+                }
+                .foregroundStyle(person.needsAttention ? Color.orange : Color.secondary)
             }
-            
+
             Spacer()
-            
-            // 미탐험 영역 수
-            if !person.unexploredTerritories.isEmpty {
-                Text("\(person.unexploredTerritories.count)")
-                    .font(.caption2)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(person.depth.color)
-                    .clipShape(Capsule())
+
+            // 주의 필요 + 미탐험 영역 수
+            VStack(spacing: 3) {
+                if person.needsAttention {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                if !person.unexploredTerritories.isEmpty {
+                    Text("\(person.unexploredTerritories.count)")
+                        .font(.caption2).fontWeight(.bold)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(person.depth.color)
+                        .clipShape(Capsule())
+                }
             }
         }
         .padding(.vertical, 4)
@@ -296,7 +309,6 @@ struct MacPersonDetailView: View {
                 switch selectedTab {
                 case .map:      PersonMapView(person: person)
                 case .timeline: DiscoveryTimelineView(person: person)
-                case .memo:     PersonMemoView(person: person)
                 case .records:  ActivityRecordsView(person: person)
                 case .info:     PersonInfoView(person: person)
                 }
@@ -317,7 +329,6 @@ struct MacPersonDetailView: View {
 enum MacDetailTab: String, CaseIterable {
     case map
     case timeline
-    case memo
     case records
     case info
 
@@ -325,7 +336,6 @@ enum MacDetailTab: String, CaseIterable {
         switch self {
         case .map:      return "지도"
         case .timeline: return "발견들"
-        case .memo:     return "메모"
         case .records:  return "기록"
         case .info:     return "정보"
         }
@@ -335,7 +345,6 @@ enum MacDetailTab: String, CaseIterable {
         switch self {
         case .map:      return "map"
         case .timeline: return "clock"
-        case .memo:     return "note.text"
         case .records:  return "list.bullet.clipboard"
         case .info:     return "info.circle"
         }

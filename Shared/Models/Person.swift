@@ -50,6 +50,14 @@ final class Person {
     /// 여러 명이 함께한 그룹 이벤트들
     @Relationship(deleteRule: .nullify, inverse: \GroupEvent.participants)
     var groupEvents: [GroupEvent]?
+
+    /// 특정 시점 스냅샷들 (면접, 첫 만남 등)
+    @Relationship(deleteRule: .cascade, inverse: \PersonSnapshot.person)
+    var snapshots: [PersonSnapshot]?
+
+    /// 멘토링 세션들 (음성 + 전사 + Numbers 로우데이터)
+    @Relationship(deleteRule: .cascade, inverse: \MentoringSession.person)
+    var mentoringSessions: [MentoringSession]?
     
     // MARK: - Computed Properties
     
@@ -267,10 +275,56 @@ struct DiscoveryStats {
     var intimateCount: Int { byDepth[.intimate] ?? 0 }
 }
 
+// MARK: - 마지막 만남 · 주의 필요
+
+extension Person {
+
+    /// 활동 기록 / 그룹 이벤트 / 멘토링 세션 중 가장 최근 날짜
+    var lastContactDate: Date? {
+        let dates = (activities ?? []).map(\.date)
+            + (groupEvents ?? []).map(\.date)
+            + (mentoringSessions ?? []).map(\.date)
+        return dates.max()
+    }
+
+    /// 마지막 만남으로부터 경과 일수
+    var daysSinceLastContact: Int? {
+        guard let last = lastContactDate else { return nil }
+        return Calendar.current.dateComponents([.day], from: last, to: .now).day
+    }
+
+    /// 관계 깊이별 주의 기준일수 (이 일수를 넘으면 주의 필요)
+    var attentionThresholdDays: Int {
+        switch depth {
+        case .surface:  return 90
+        case .personal: return 45
+        case .deep:     return 21
+        case .intimate: return 10
+        }
+    }
+
+    /// 주의가 필요한 관계인지 (마지막 만남이 기준일을 초과한 경우)
+    var needsAttention: Bool {
+        guard let days = daysSinceLastContact else { return false }
+        return days >= attentionThresholdDays
+    }
+
+    /// 마지막 만남 상대적 텍스트
+    var lastContactRelativeText: String {
+        guard let days = daysSinceLastContact else { return "기록 없음" }
+        if days == 0 { return "오늘" }
+        if days == 1 { return "어제" }
+        if days < 7  { return "\(days)일 전" }
+        if days < 30 { return "\(days / 7)주 전" }
+        if days < 365 { return "\(days / 30)개월 전" }
+        return "\(days / 365)년 전"
+    }
+}
+
 // MARK: - 표시용
 
 extension Person {
-    
+
     /// 표시용 이름 (메모가 있으면 메모 일부 표시)
     var displayName: String {
         name
